@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--executablePath=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+      ]
+    }
+  }
+}
+
