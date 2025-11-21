@@ -1,0 +1,746 @@
+{
+	"info": {
+		"_postman_id": "yunting-api-collection",
+		"name": "北京云听音频精修系统",
+		"description": "北京云听音频精修系统 - API接口集合\n\n包含所有21个接口的测试配置\n\nBase URL: {{base_url}}/v1",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "任务管理",
+			"item": [
+				{
+					"name": "创建任务并自动拆句",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"content\": \"这是一段需要转换为语音的文本内容。支持最多10000字。\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/tasks",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"tasks"
+							]
+						},
+						"description": "创建任务时会自动进行拆句处理（根据标点符号拆句）\n返回的任务状态为2（已拆句）\n响应中包含拆句后的所有句子列表\n原始拆句的句子parent_id为null或0\n文本内容限制10000字"
+					},
+					"response": []
+				},
+				{
+					"name": "获取任务详情",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/tasks/taskid={{task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"tasks",
+								"taskid={{task_id}}"
+							]
+						},
+						"description": "获取任务的详细信息，包括所有句子、SSML配置、合并音频信息等"
+					},
+					"response": []
+				},
+				{
+					"name": "获取任务列表",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/tasks?page=1&page_size=20&status=2",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"tasks"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "页码（可选，默认1）"
+								},
+								{
+									"key": "page_size",
+									"value": "20",
+									"description": "每页数量（可选，默认20）"
+								},
+								{
+									"key": "status",
+									"value": "2",
+									"description": "任务状态（可选，1-待拆句，2-已拆句，3-已完成）"
+								}
+							]
+						},
+						"description": "支持分页查询\n支持按状态筛选\n支持按时间排序（默认按创建时间倒序）"
+					},
+					"response": []
+				}
+			],
+			"description": "任务管理相关接口"
+		},
+		{
+			"name": "句子管理",
+			"item": [
+				{
+					"name": "获取句子列表",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/tasks/sentences?taskid={{task_id}}&page=1&page_size=20",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"tasks",
+								"sentences"
+							],
+							"query": [
+								{
+									"key": "taskid",
+									"value": "{{task_id}}",
+									"description": "任务ID（必填）"
+								},
+								{
+									"key": "page",
+									"value": "1",
+									"description": "页码（可选）"
+								},
+								{
+									"key": "page_size",
+									"value": "20",
+									"description": "每页数量（可选）"
+								}
+							]
+						},
+						"description": "获取指定任务下的所有句子列表"
+					},
+					"response": []
+				},
+				{
+					"name": "获取句子详情",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/sentences/info?sentenceid={{sentence_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"sentences",
+								"info"
+							],
+							"query": [
+								{
+									"key": "sentenceid",
+									"value": "{{sentence_id}}",
+									"description": "句子ID（必填）"
+								}
+							]
+						},
+						"description": "获取句子的详细信息，包括参数设置、停顿、多音字等"
+					},
+					"response": []
+				},
+				{
+					"name": "删除句子",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/sentences?sentenceid={{sentence_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"sentences"
+							],
+							"query": [
+								{
+									"key": "sentenceid",
+									"value": "{{sentence_id}}",
+									"description": "句子ID（必填）"
+								}
+							]
+						},
+						"description": "删除句子后，需要重新排序后续句子的sequence\n删除句子会级联删除相关的设置（停顿、多音字、合成设置等）"
+					},
+					"response": []
+				}
+			],
+			"description": "句子管理相关接口"
+		},
+		{
+			"name": "语音合成",
+			"item": [
+				{
+					"name": "合成单个句子",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"voice_id\": \"xiaoyan\",\n  \"speech_rate\": 0,\n  \"volume\": 0,\n  \"pitch\": 0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/sentences/synthesize?sentenceid={{sentence_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"sentences",
+								"synthesize"
+							],
+							"query": [
+								{
+									"key": "sentenceid",
+									"value": "{{sentence_id}}",
+									"description": "句子ID（必填）"
+								}
+							]
+						},
+						"description": "合成状态：0-未合成，1-合成中，2-已合成，3-合成失败\n合成是异步操作，需要通过查询合成状态接口获取结果"
+					},
+					"response": []
+				},
+				{
+					"name": "重新合成句子",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"voice_id\": \"xiaoyan\",\n  \"speech_rate\": 10,\n  \"volume\": 5,\n  \"pitch\": -2\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/sentences/resynthesize?sentenceid={{sentence_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"sentences",
+								"resynthesize"
+							],
+							"query": [
+								{
+									"key": "sentenceid",
+									"value": "{{sentence_id}}",
+									"description": "句子ID（必填）"
+								}
+							]
+						},
+						"description": "重新合成会覆盖原有的音频文件\n使用当前句子的参数设置进行合成"
+					},
+					"response": []
+				},
+				{
+					"name": "批量合成",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"voice_id\": \"xiaoyan\",\n  \"speech_rate\": 0,\n  \"volume\": 0,\n  \"sentence_ids\": [1, 2, 3]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/tasks/synthesize?taskid={{task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"tasks",
+								"synthesize"
+							],
+							"query": [
+								{
+									"key": "taskid",
+									"value": "{{task_id}}",
+									"description": "任务ID（必填）"
+								}
+							]
+						},
+						"description": "sentence_ids: 可选，不传则合成所有未合成的句子\n批量合成是异步操作"
+					},
+					"response": []
+				},
+				{
+					"name": "查询合成状态",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/synthesis/tasks?taskid={{task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"synthesis",
+								"tasks"
+							],
+							"query": [
+								{
+									"key": "taskid",
+									"value": "{{task_id}}",
+									"description": "任务ID（必填）"
+								}
+							]
+						},
+						"description": "查询语音合成的状态和进度"
+					},
+					"response": []
+				}
+			],
+			"description": "语音合成相关接口"
+		},
+		{
+			"name": "参数调整",
+			"item": [
+				{
+					"name": "调整参数（基础）",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"content\": \"修改后的内容\",\n  \"speech_rate\": 10,\n  \"volume\": 5,\n  \"pitch\": -2,\n  \"voice_id\": \"xiaoyan\",\n  \"pauses\": [\n    {\"id\": 1, \"position\": 10, \"duration\": 500, \"type\": 1},\n    {\"position\": 25, \"duration\": 1000, \"type\": 2}\n  ],\n  \"polyphonic\": [\n    {\"id\": 3, \"character\": \"重\", \"position\": 8, \"pronunciation\": \"zhong4\"}\n  ],\n  \"reading_rule_ids\": [1, 2]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/sentences/settings?sentenceid={{sentence_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"sentences",
+								"settings"
+							],
+							"query": [
+								{
+									"key": "sentenceid",
+									"value": "{{sentence_id}}",
+									"description": "句子ID（必填）"
+								}
+							]
+						},
+						"description": "所有参数都是可选的，只更新传入的参数\ncontent: 用于修改句子内容\npauses: 停顿和静音设置，type=1表示停顿，type=2表示静音\npolyphonic: 多音字设置\nreading_rule_ids: 应用的阅读规范ID列表\n参数调整后，SSML会自动更新"
+					},
+					"response": []
+				},
+				{
+					"name": "调整参数（向下插入句子）",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"insert_sentences\": [\n    {\n      \"parent_id\": 1,\n      \"content\": \"插入的文本内容\",\n      \"voice_id\": \"xiaoyan\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/sentences/settings?sentenceid={{sentence_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"sentences",
+								"settings"
+							],
+							"query": [
+								{
+									"key": "sentenceid",
+									"value": "{{sentence_id}}",
+									"description": "句子ID（必填）"
+								}
+							]
+						},
+						"description": "向下插入句子（前端点击保存时一并提交）\nparent_id: 必填，指定在哪个句子下方插入\n插入的句子parent_id为指定的parent_id\n插入后，后续句子的sequence会自动调整"
+					},
+					"response": []
+				},
+				{
+					"name": "调整参数（重新断句）",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"rebreak_sentence\": {\n    \"breaking_standard_id\": 2,\n    \"char_count\": 50\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/sentences/settings?sentenceid={{sentence_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"sentences",
+								"settings"
+							],
+							"query": [
+								{
+									"key": "sentenceid",
+									"value": "{{sentence_id}}",
+									"description": "句子ID（必填）"
+								}
+							]
+						},
+						"description": "重新断句（前端点击保存时一并提交）\nbreaking_standard_id: 断句标准ID\n  - 1: 大符号（标点符号）断句 - 如果选择此标准，句子内容不变，不执行重新断句\n  - 2: N个字符断句 - 根据char_count参数将原句子拆成多个新句子\nchar_count: 当断句标准为\"N个字符\"时必填\n重新断句时，原句子的内容会根据断句标准拆成新的一组句子\n新生成的句子parent_id为原句子的ID\n原句子保留（用于历史记录），但不再参与合成和合并"
+					},
+					"response": []
+				}
+			],
+			"description": "参数调整相关接口"
+		},
+		{
+			"name": "阅读规范",
+			"item": [
+				{
+					"name": "创建阅读规范",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"task_id\": 1,\n  \"pattern\": \"2025\",\n  \"rule_type\": \"数字读法\",\n  \"rule_value\": \"二零二五\",\n  \"scope\": 2\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/reading-rules",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"reading-rules"
+							]
+						},
+						"description": "scope: 1-全局，2-任务\ntask_id: scope为2时必填"
+					},
+					"response": []
+				},
+				{
+					"name": "获取阅读规范列表",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/reading-rules?task_id=1&scope=2",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"reading-rules"
+							],
+							"query": [
+								{
+									"key": "task_id",
+									"value": "1",
+									"description": "任务ID（可选）"
+								},
+								{
+									"key": "scope",
+									"value": "2",
+									"description": "作用域（可选，1-全局，2-任务）"
+								}
+							]
+						},
+						"description": "获取阅读规范列表，支持按任务和作用域筛选"
+					},
+					"response": []
+				},
+				{
+					"name": "应用阅读规范",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/reading-rules/apply?ruleid={{rule_id}}&taskid={{task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"reading-rules",
+								"apply"
+							],
+							"query": [
+								{
+									"key": "ruleid",
+									"value": "{{rule_id}}",
+									"description": "阅读规范ID（必填）"
+								},
+								{
+									"key": "taskid",
+									"value": "{{task_id}}",
+									"description": "任务ID（必填）"
+								}
+							]
+						},
+						"description": "将阅读规范应用到指定任务的所有句子\n自动匹配句子中的模式并应用规则"
+					},
+					"response": []
+				}
+			],
+			"description": "阅读规范相关接口"
+		},
+		{
+			"name": "音频编辑",
+			"item": [
+				{
+					"name": "合并音频",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"sentence_ids\": [1, 2, 3, 4]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/tasks/audio/merge?taskid={{task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"tasks",
+								"audio",
+								"merge"
+							],
+							"query": [
+								{
+									"key": "taskid",
+									"value": "{{task_id}}",
+									"description": "任务ID（必填）"
+								}
+							]
+						},
+						"description": "sentence_ids: 可选，不传则合并所有已合成的句子\n合并顺序按照sequence字段排序\n合并音频使用ffmpeg进行\n合并完成后，任务的merged_audio_url和merged_audio_duration字段会自动更新"
+					},
+					"response": []
+				},
+				{
+					"name": "查询合并状态",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/audio/merges/merge?mergeid={{merge_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"audio",
+								"merges",
+								"merge"
+							],
+							"query": [
+								{
+									"key": "mergeid",
+									"value": "{{merge_id}}",
+									"description": "合并ID（必填）"
+								}
+							]
+						},
+						"description": "查询音频合并的状态\n合并完成后，可以通过任务详情接口获取任务的merged_audio_url和merged_audio_duration"
+					},
+					"response": []
+				}
+			],
+			"description": "音频编辑相关接口"
+		},
+		{
+			"name": "音色管理",
+			"item": [
+				{
+					"name": "获取音色列表",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/voices?is_recommended=1&language=zh-CN",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"voices"
+							],
+							"query": [
+								{
+									"key": "is_recommended",
+									"value": "1",
+									"description": "是否只获取推荐音色（1-是，0-否）"
+								},
+								{
+									"key": "language",
+									"value": "zh-CN",
+									"description": "语言（默认zh-CN）"
+								}
+							]
+						},
+						"description": "获取可用的音色列表"
+					},
+					"response": []
+				}
+			],
+			"description": "音色管理相关接口"
+		},
+		{
+			"name": "断句标准",
+			"item": [
+				{
+					"name": "获取断句标准",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/sentence-breaking/standards",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"sentence-breaking",
+								"standards"
+							]
+						},
+						"description": "此接口仅用于查询系统支持的断句标准\n断句标准的保存和应用在参数设置接口中完成"
+					},
+					"response": []
+				},
+				{
+					"name": "保存断句标准设置",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"breaking_standard_id\": 2,\n  \"char_count\": 50\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/sentence-breaking/settings?taskid={{task_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"v1",
+								"sentence-breaking",
+								"settings"
+							],
+							"query": [
+								{
+									"key": "taskid",
+									"value": "{{task_id}}",
+									"description": "任务ID（必填）"
+								}
+							]
+						},
+						"description": "此接口仅用于保存断句标准设置，不执行断句操作\n断句操作在参数设置接口中，通过rebreak_sentence参数触发\n如果断句标准是\"大符号\"（ID=1），拆句逻辑不变，句子内容还是原始的\n如果断句标准是\"N个字符\"（ID=2），需要在参数设置时指定char_count，系统会根据N个字符将原句子拆成新的一组句子"
+					},
+					"response": []
+				}
+			],
+			"description": "断句标准相关接口"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "task_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "sentence_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "rule_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "merge_id",
+			"value": "1",
+			"type": "string"
+		}
+	]
+}
+
