@@ -53,20 +53,24 @@ frontend/
 
 - `/` - 测试页面，用于测试各个弹框
 - `/text-input` - 文本输入页面
-- `/sentences?task_id={id}` - 拆句结果页面
+- `/sentences?task_id={id}` - 拆句结果页面（支持内联精修、音色/参数调整）
 - `/edit?task_id={id}&sentence_id={id}` - 精修页面
 
 ## 开发说明
 
 详细开发说明请查看 [开发说明文档](./开发说明文档.md)
 
-## API 配置
+## API / Mock 配置
 
-在 `.env` 文件中配置 API 地址：
+在 `.env` 文件中配置：
 
 ```
 VITE_API_BASE_URL=/api/v1
+VITE_USE_MOCK=true
 ```
+
+- `VITE_USE_MOCK=true` 时，前端会使用内置 mock 数据，接口不可用时也能预览完整交互
+- 设置为 `false` 即可切换到真实后端 API
 
 开发环境使用 Vite 代理，生产环境需要配置 CORS。
 
