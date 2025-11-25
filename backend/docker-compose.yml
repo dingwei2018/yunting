@@ -38,6 +38,7 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
+      - LOG_HOME=/app/logs
       - SPRING_DATASOURCE_URL=jdbc:mysql://yunting-mysql:3306/yunting?characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
       - SPRING_DATASOURCE_USERNAME=yunting
       - SPRING_DATASOURCE_PASSWORD=yunting
