@@ -1,11 +1,11 @@
 package com.yunting.controller;
 
-import org.springframework.http.ResponseEntity;
+import com.yunting.common.ApiResponse;
+import com.yunting.common.ResponseUtil;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -13,11 +13,12 @@ import java.util.Map;
 public class HealthController {
 
     @GetMapping("/health")
-    public ResponseEntity<Map<String, Object>> health() {
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "UP");
-        response.put("message", "服务运行正常");
-        return ResponseEntity.ok(response);
+    public ApiResponse<Map<String, String>> health() {
+        Map<String, String> status = Map.of(
+                "status", "UP",
+                "message", "服务运行正常"
+        );
+        return ResponseUtil.success(status);
     }
 }
 
