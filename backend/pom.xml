@@ -71,6 +71,20 @@
             <version>3.0.3</version>
         </dependency>
 
+        <!-- Huawei Cloud OBS SDK (Bundle) -->
+        <dependency>
+            <groupId>com.huaweicloud</groupId>
+            <artifactId>esdk-obs-java-bundle</artifactId>
+            <version>3.23.9</version>
+        </dependency>
+
+        <!-- 华为云 SDK Bundle 包（避免第三方库冲突） -->
+        <dependency>
+            <groupId>com.huaweicloud.sdk</groupId>
+            <artifactId>huaweicloud-sdk-bundle</artifactId>
+            <version>3.1.80</version>
+        </dependency>
+
         <!-- Spring Boot Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

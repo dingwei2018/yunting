@@ -8,6 +8,7 @@
 - **构建工具**: Maven
 - **框架**: Spring Boot 3.3.0
 - **数据库**: MySQL 8.0.36
+- **对象存储**: Huawei OBS SDK（esdk-obs-java-bundle 3.23.9）
 - **容器化**: Docker
 
 ## 快速开始
@@ -84,4 +85,5 @@ docker run -d -p 8080:8080 --name yunting-backend yunting-backend:latest
   - 数据库：`yunting`
   - Root 密码：`secret`
 - 可以通过环境变量 `SPRING_DATASOURCE_*` 覆盖默认的数据库配置
+- Huawei OBS 相关配置通过 `huaweicloud.obs.*` 或环境变量（如 `HUAWEICLOUD_OBS_ENDPOINT`、`HUAWEICLOUD_OBS_BUCKET`）注入，未配置时不会初始化 `ObsClient`
 
