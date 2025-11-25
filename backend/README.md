@@ -81,7 +81,10 @@ docker run -d -p 8080:8080 --name yunting-backend yunting-backend:latest
 
 ## API 接口
 
-- `GET /api/health` - 健康检查接口
+- `GET /api/health` - 健康检查
+- `POST /api/tasks` - 创建任务并自动拆句（返回拆句列表）
+- `GET /api/tasks/taskid={task_id}` 或 `GET /api/tasks?taskid={task_id}` - 获取任务详情
+- `GET /api/tasks?page=1&page_size=20&status=2` - 分页查询任务列表（支持状态筛选）
 
 ## 注意事项
 
