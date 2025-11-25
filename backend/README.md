@@ -60,9 +60,17 @@ docker run -d -p 8080:8080 --name yunting-backend yunting-backend:latest
 │   ├── main/
 │   │   ├── java/com/yunting/
 │   │   │   ├── BackendApplication.java
-│   │   │   └── controller/
+│   │   │   ├── config/
+│   │   │   ├── controller/
+│   │   │   ├── exception/
+│   │   │   ├── service/
+│   │   │   └── util/
 │   │   └── resources/
-│   │       └── application.properties
+│   │       ├── application.properties
+│   │       ├── logback-spring.xml
+│   │       └── db/
+│   │           ├── schema.sql       # 建表脚本
+│   │           └── init-data.sql    # 基础数据
 │   └── test/
 ├── Dockerfile
 ├── docker-compose.yml
@@ -85,5 +93,6 @@ docker run -d -p 8080:8080 --name yunting-backend yunting-backend:latest
   - 数据库：`yunting`
   - Root 密码：`secret`
 - 可以通过环境变量 `SPRING_DATASOURCE_*` 覆盖默认的数据库配置
+- `src/main/resources/db/schema.sql` 提供全量建表脚本，`init-data.sql` 提供基础音色数据
 - Huawei OBS 相关配置通过 `huaweicloud.obs.*` 或环境变量（如 `HUAWEICLOUD_OBS_ENDPOINT`、`HUAWEICLOUD_OBS_BUCKET`）注入，未配置时不会初始化 `ObsClient`
 
