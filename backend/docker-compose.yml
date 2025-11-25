@@ -1,16 +1,46 @@
 version: '3.8'
 
 services:
+  mysql:
+    image: mysql:8.0.36
+    container_name: yunting-mysql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=secret
+      - MYSQL_DATABASE=yunting
+      - MYSQL_USER=yunting
+      - MYSQL_PASSWORD=yunting
+      - TZ=Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - yunting-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: yunting-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
     ports:
       - "8080:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - TZ=Asia/Shanghai
+      - SPRING_DATASOURCE_URL=jdbc:mysql://yunting-mysql:3306/yunting?characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_USERNAME=yunting
+      - SPRING_DATASOURCE_PASSWORD=yunting
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
@@ -26,4 +56,7 @@ services:
 networks:
   yunting-network:
     driver: bridge
+
+volumes:
+  mysql-data:
 
