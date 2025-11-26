@@ -21,8 +21,21 @@
 }
 
 .sub-textarea-item.active {
-  border-color: #2f7bff;
-  box-shadow: 0 6px 16px rgba(47, 123, 255, 0.2);
+  border-color: #4f7bff;
+  background: radial-gradient(circle at top, rgba(79, 123, 255, 0.2), rgba(79, 123, 255, 0.05));
+  box-shadow:
+    0 0 0 2px rgba(79, 123, 255, 0.35),
+    0 14px 32px rgba(79, 123, 255, 0.25);
+}
+
+.sub-textarea-item.active :deep(.rich-text-editor) {
+  border: 2px solid #4f7bff;
+  box-shadow:
+    0 0 0 3px rgba(79, 123, 255, 0.2),
+    0 16px 36px rgba(79, 123, 255, 0.2);
+  border-radius: 8px;
+  background: #fff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .sub-textarea-item :deep(.el-textarea__inner) {
@@ -106,6 +119,7 @@
                 @update:activeVoiceCategory="handleUpdateCategory"
                 @select-voice="selectVoice"
                 @custom-action="handleCustomAction"
+                @clear-text="() => handleClearText(sentence)"
               />
 
               <div class="sub-textarea-list">
@@ -131,9 +145,11 @@
                       v-model="sub.content"
                       :polyphonic-markers="getPolyphonicMarkers(sub)"
                       :show-polyphonic-hints="isPolyphonicModeActive(sub)"
+                      :is-active="editingSubSentenceId === sub.sentence_id"
                       @selection-change="(payload) => handleEditorSelectionChange(sub, payload)"
                       @content-change="() => handleEditorContentChange(sub)"
                       @polyphonic-hover="(payload) => handlePolyphonicHover(sub, payload)"
+                      @focus="() => handleEditorFocus(sub)"
                     />
                     <div class="textarea-floating-links" @click.stop>
                       <SentenceActionLinks
@@ -485,6 +501,8 @@ const refreshPolyphonicForSub = (sub) => {
   buildPolyphonicMarkers(sub)
 }
 
+const isClearingText = ref(false)
+
 const selectSubSentence = (sub) => {
   if (!sub) return
   editingSubSentenceId.value = sub.sentence_id
@@ -513,9 +531,82 @@ const handleEditorContentChange = (sub) => {
   if (!sub) return
   refreshPolyphonicForSub(sub)
 }
+
+const handleEditorFocus = (sub) => {
+  if (!sub) return
+  if (editingSubSentenceId.value !== sub.sentence_id) {
+    selectSubSentence(sub)
+  }
+}
+
+const handleClearText = async (rootSentence) => {
+  if (!rootSentence) return
+  isClearingText.value = true
+
+  // 先清空原始拆句内容，防止后续同步又把旧文本写回
+  rootSentence.content = ''
+  const children = sentences.value
+    .filter((item) => item.parent_id === rootSentence.sentence_id)
+    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+
+  const [keeper, ...toDelete] = children
+
+  // 删除多余的子句子
+  for (const child of toDelete) {
+    try {
+      await deleteSentence(child.sentence_id)
+    } catch (error) {
+      console.error('删除子句子失败:', error)
+    }
+    const index = sentences.value.findIndex(
+      (item) => item.sentence_id === child.sentence_id
+    )
+    if (index !== -1) {
+      sentences.value.splice(index, 1)
+    }
+  }
+
+  let target = keeper
+
+  if (target) {
+    target.content = ''
+    editingForm.content = ''
+    refreshPolyphonicForSub(target)
+  } else {
+    // 没有子句子时创建一个新的空输入框
+    try {
+      const newSentence = await insertSentenceAfter(rootSentence.sentence_id, { content: '' })
+      if (newSentence && newSentence.sentence_id) {
+        const normalized = normalizeSentenceParams({ ...newSentence })
+        const parentIndex = sentences.value.findIndex(
+          (item) => item.sentence_id === rootSentence.sentence_id
+        )
+        if (parentIndex !== -1) {
+          sentences.value.splice(parentIndex + 1, 0, normalized)
+        } else {
+          sentences.value.push(normalized)
+        }
+        ensurePolyphonicState(normalized.sentence_id)
+        target = normalized
+      }
+    } catch (error) {
+      console.error('创建空子句子失败:', error)
+    }
+  }
+
+  if (target) {
+    editingForm.content = ''
+    editingSubSentenceId.value = target.sentence_id
+  }
+  isClearingText.value = false
+  if (target) {
+    selectSubSentence(target)
+  }
+}
 watch(
   () => editingSubSentenceId.value,
   () => {
+    if (isClearingText.value) return
     const sub = currentSubSentence.value
     if (sub) {
       editingForm.sentenceId = sub.sentence_id
@@ -531,6 +622,7 @@ watch(
 watch(
   () => currentSubSentence.value && currentSubSentence.value.content,
   (val) => {
+    if (isClearingText.value) return
     if (typeof val === 'string') {
       editingForm.content = val
     }

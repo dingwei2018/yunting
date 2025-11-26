@@ -41,7 +41,9 @@
         <div class="custom-ops">
           <span class="text-count">{{ editingForm.content.length }}/5000</span>
           <el-button link type="primary">全部合成</el-button>
-          <el-button link type="primary">清空文本</el-button>
+          <el-button link type="primary" @click="$emit('clear-text')">
+            清空文本
+          </el-button>
         </div>
       </div>
 
@@ -85,7 +87,8 @@ const props = defineProps({
 const emit = defineEmits([
   'update:activeVoiceCategory',
   'select-voice',
-  'custom-action'
+  'custom-action',
+  'clear-text'
 ])
 
 const iconComponents = {

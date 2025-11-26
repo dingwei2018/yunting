@@ -1,5 +1,5 @@
 <template>
-  <div class="rich-text-editor" v-if="editor">
+  <div :class="editorClasses" v-if="editor" @focusin="handleFocusin">
     <EditorContent :editor="editor" class="rich-text-editor__content" />
   </div>
 </template>
@@ -12,7 +12,8 @@ import {
   defineEmits,
   defineExpose,
   nextTick,
-  ref
+  ref,
+  computed
 } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
@@ -40,14 +41,26 @@ const props = defineProps({
   showPolyphonicHints: {
     type: Boolean,
     default: false
+  },
+  isActive: {
+    type: Boolean,
+    default: false
   }
 })
+
+const editorClasses = computed(() => [
+  'rich-text-editor',
+  {
+    'is-active': props.isActive
+  }
+])
 
 const emit = defineEmits([
   'update:modelValue',
   'selectionChange',
   'contentChange',
-  'polyphonicHover'
+  'polyphonicHover',
+  'focus'
 ])
 
 const markerMap = ref(new Map())
@@ -107,8 +120,15 @@ const editor = useEditor({
     const { from } = editor.state.selection
     const text = editor.state.doc.textBetween(0, from)
     emit('selectionChange', { hasTextBefore: text.length > 0 })
+  },
+  onFocus() {
+    emit('focus')
   }
 })
+
+const handleFocusin = () => {
+  emit('focus')
+}
 
 const getRenderableMarkers = () => {
   const showPending = props.showPolyphonicHints
@@ -310,6 +330,17 @@ onBeforeUnmount(() => {
   detachDomEvents()
   editor?.value?.destroy()
 })
+
+watch(
+  () => props.modelValue,
+  (val) => {
+    if (!editor?.value) return
+    const current = deserialize(editor.value.getHTML())
+    if (current !== val) {
+      editor.value.commands.setContent(serialize(val || ''))
+    }
+  }
+)
 </script>
 
 <style scoped>
@@ -318,6 +349,14 @@ onBeforeUnmount(() => {
   border: 1px solid #dcdfe6;
   border-radius: 6px;
   background: #fff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rich-text-editor.is-active {
+  border-color: #4f7bff;
+  box-shadow:
+    0 0 0 2px rgba(79, 123, 255, 0.18),
+    0 12px 30px rgba(79, 123, 255, 0.22);
 }
 
 .rich-text-editor__content :deep(.ProseMirror) {
