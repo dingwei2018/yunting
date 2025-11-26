@@ -94,6 +94,9 @@ docker run -d -p 8080:8080 --name yunting-backend yunting-backend:latest
 - `GET /api/synthesis/tasks?taskid={task_id}` - 查询任务合成状态
 - `POST /api/breaking-sentences/settings?taskid={task_id}` - 批量调整断句参数
 - `POST /api/breaking-sentences/settings?breaking_sentence_id={id}` - 调整单个断句参数
+- `POST /api/reading-rules` - 创建阅读规范
+- `GET /api/reading-rules?task_id=&scope=` - 阅读规范列表
+- `POST /api/reading-rules/apply?ruleid=&taskid=` - 阅读规范应用
 
 ## 注意事项
 

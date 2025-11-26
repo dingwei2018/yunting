@@ -8,6 +8,10 @@
         DELETE FROM reading_rule_applications WHERE breaking_sentence_id = #{breakingSentenceId}
     </delete>
 
+    <delete id="deleteByRuleId" parameterType="long">
+        DELETE FROM reading_rule_applications WHERE rule_id = #{ruleId}
+    </delete>
+
     <insert id="insertBatch" parameterType="java.util.List">
         INSERT INTO reading_rule_applications (rule_id, breaking_sentence_id, created_at)
         VALUES

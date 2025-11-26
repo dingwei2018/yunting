@@ -10,6 +10,8 @@ public interface ReadingRuleApplicationMapper {
     int deleteByBreakingSentenceId(@Param("breakingSentenceId") Long breakingSentenceId);
 
     int insertBatch(@Param("list") List<ReadingRuleApplication> list);
+
+    int deleteByRuleId(@Param("ruleId") Long ruleId);
 }
 
 

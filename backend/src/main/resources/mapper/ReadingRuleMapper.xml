@@ -4,6 +4,40 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.yunting.mapper.ReadingRuleMapper">
 
+    <resultMap id="ReadingRuleResultMap" type="com.yunting.model.ReadingRule">
+        <id property="ruleId" column="rule_id"/>
+        <result property="taskId" column="task_id"/>
+        <result property="pattern" column="pattern"/>
+        <result property="ruleType" column="rule_type"/>
+        <result property="ruleValue" column="rule_value"/>
+        <result property="scope" column="scope"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.yunting.model.ReadingRule" useGeneratedKeys="true" keyProperty="ruleId">
+        INSERT INTO reading_rules (task_id, pattern, rule_type, rule_value, scope, created_at, updated_at)
+        VALUES (#{taskId}, #{pattern}, #{ruleType}, #{ruleValue}, #{scope}, NOW(), NOW())
+    </insert>
+
+    <select id="selectById" parameterType="long" resultMap="ReadingRuleResultMap">
+        SELECT * FROM reading_rules WHERE rule_id = #{ruleId}
+    </select>
+
+    <select id="selectList" resultMap="ReadingRuleResultMap">
+        SELECT *
+        FROM reading_rules
+        <where>
+            <if test="taskId != null">
+                task_id = #{taskId}
+            </if>
+            <if test="scope != null">
+                AND scope = #{scope}
+            </if>
+        </where>
+        ORDER BY created_at DESC
+    </select>
+
     <select id="selectExistingIds" resultType="long">
         SELECT rule_id
         FROM reading_rules
