@@ -47,5 +47,13 @@
             </if>
         </where>
     </select>
+
+    <update id="updateBreakingStandard">
+        UPDATE tasks
+        SET breaking_standard_id = #{breakingStandardId},
+            char_count_limit = #{charCountLimit},
+            updated_at = NOW()
+        WHERE task_id = #{taskId}
+    </update>
 </mapper>
 

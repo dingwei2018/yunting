@@ -1,3 +1,5 @@
+- `GET /api/sentence-breaking/standards` - 获取断句标准
+- `POST /api/sentence-breaking/settings?taskid={task_id}` - 保存断句标准设置
 # 云听后端服务
 
 基于 Spring Boot 和 JDK 21 的后端服务项目。

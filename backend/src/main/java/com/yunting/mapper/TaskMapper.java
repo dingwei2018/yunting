@@ -16,5 +16,9 @@ public interface TaskMapper {
                           @Param("pageSize") Integer pageSize);
 
     long countByStatus(@Param("status") Integer status);
+
+    int updateBreakingStandard(@Param("taskId") Long taskId,
+                               @Param("breakingStandardId") Integer breakingStandardId,
+                               @Param("charCountLimit") Integer charCountLimit);
 }
 
