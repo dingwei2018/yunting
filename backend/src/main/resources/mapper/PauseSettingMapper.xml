@@ -30,6 +30,18 @@
         ORDER BY breaking_sentence_id, position ASC
     </select>
 
+    <delete id="deleteByBreakingSentenceId" parameterType="long">
+        DELETE FROM pause_settings WHERE breaking_sentence_id = #{breakingSentenceId}
+    </delete>
+
+    <insert id="insertBatch" parameterType="java.util.List">
+        INSERT INTO pause_settings (breaking_sentence_id, position, duration, type, created_at)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.breakingSentenceId}, #{item.position}, #{item.duration}, #{item.type}, NOW())
+        </foreach>
+    </insert>
+
 </mapper>
 
 

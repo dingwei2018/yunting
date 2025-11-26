@@ -10,6 +10,10 @@ public interface PolyphonicSettingMapper {
     List<PolyphonicSetting> selectByBreakingSentenceId(@Param("breakingSentenceId") Long breakingSentenceId);
 
     List<PolyphonicSetting> selectByBreakingSentenceIds(@Param("ids") List<Long> breakingSentenceIds);
+
+    int deleteByBreakingSentenceId(@Param("breakingSentenceId") Long breakingSentenceId);
+
+    int insertBatch(@Param("list") List<PolyphonicSetting> list);
 }
 
 

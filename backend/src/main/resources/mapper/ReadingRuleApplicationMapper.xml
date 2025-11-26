@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yunting.mapper.ReadingRuleApplicationMapper">
+
+    <delete id="deleteByBreakingSentenceId" parameterType="long">
+        DELETE FROM reading_rule_applications WHERE breaking_sentence_id = #{breakingSentenceId}
+    </delete>
+
+    <insert id="insertBatch" parameterType="java.util.List">
+        INSERT INTO reading_rule_applications (rule_id, breaking_sentence_id, created_at)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.ruleId}, #{item.breakingSentenceId}, NOW())
+        </foreach>
+    </insert>
+
+</mapper>
+
+

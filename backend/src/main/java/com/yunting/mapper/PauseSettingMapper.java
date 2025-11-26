@@ -10,6 +10,10 @@ public interface PauseSettingMapper {
     List<PauseSetting> selectByBreakingSentenceId(@Param("breakingSentenceId") Long breakingSentenceId);
 
     List<PauseSetting> selectByBreakingSentenceIds(@Param("ids") List<Long> breakingSentenceIds);
+
+    int deleteByBreakingSentenceId(@Param("breakingSentenceId") Long breakingSentenceId);
+
+    int insertBatch(@Param("list") List<PauseSetting> list);
 }
 
 

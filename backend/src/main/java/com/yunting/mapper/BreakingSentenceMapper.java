@@ -33,5 +33,12 @@ public interface BreakingSentenceMapper {
                             @Param("audioDuration") Integer audioDuration);
 
     int resetSynthesisStatus(@Param("breakingSentenceId") Long breakingSentenceId);
+
+    int updateContent(@Param("breakingSentenceId") Long breakingSentenceId,
+                      @Param("content") String content,
+                      @Param("charCount") Integer charCount);
+
+    int updateSsml(@Param("breakingSentenceId") Long breakingSentenceId,
+                   @Param("ssml") String ssml);
 }
 

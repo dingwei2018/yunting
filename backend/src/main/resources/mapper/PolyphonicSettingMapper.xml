@@ -30,6 +30,18 @@
         ORDER BY breaking_sentence_id, position ASC
     </select>
 
+    <delete id="deleteByBreakingSentenceId" parameterType="long">
+        DELETE FROM polyphonic_settings WHERE breaking_sentence_id = #{breakingSentenceId}
+    </delete>
+
+    <insert id="insertBatch" parameterType="java.util.List">
+        INSERT INTO polyphonic_settings (breaking_sentence_id, character, position, pronunciation, created_at)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.breakingSentenceId}, #{item.character}, #{item.position}, #{item.pronunciation}, NOW())
+        </foreach>
+    </insert>
+
 </mapper>
 
 

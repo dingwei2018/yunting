@@ -92,6 +92,8 @@ docker run -d -p 8080:8080 --name yunting-backend yunting-backend:latest
 - `POST /api/breaking-sentences/resynthesize?breaking_sentence_id={id}` - 重新合成断句
 - `POST /api/tasks/synthesize?taskid={task_id}` - 批量合成任务内断句
 - `GET /api/synthesis/tasks?taskid={task_id}` - 查询任务合成状态
+- `POST /api/breaking-sentences/settings?taskid={task_id}` - 批量调整断句参数
+- `POST /api/breaking-sentences/settings?breaking_sentence_id={id}` - 调整单个断句参数
 
 ## 注意事项
 

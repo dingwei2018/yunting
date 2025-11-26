@@ -98,5 +98,20 @@
             updated_at = NOW()
         WHERE breaking_sentence_id = #{breakingSentenceId}
     </update>
+
+    <update id="updateContent">
+        UPDATE breaking_sentences
+        SET content = #{content},
+            char_count = #{charCount},
+            updated_at = NOW()
+        WHERE breaking_sentence_id = #{breakingSentenceId}
+    </update>
+
+    <update id="updateSsml">
+        UPDATE breaking_sentences
+        SET ssml = #{ssml},
+            updated_at = NOW()
+        WHERE breaking_sentence_id = #{breakingSentenceId}
+    </update>
 </mapper>
 
