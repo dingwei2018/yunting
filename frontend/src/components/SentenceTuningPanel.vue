@@ -1,17 +1,6 @@
 <template>
   <div class="tuning-panel">
     <div class="voice-section">
-      <div class="voice-category">
-        <div
-          v-for="category in voiceCategories"
-          :key="category.value"
-          class="voice-category-item"
-          :class="{ active: activeVoiceCategory === category.value }"
-          @click="updateCategory(category.value)"
-        >
-          {{ category.label }}
-        </div>
-      </div>
       <div class="voice-tabs">
         <div
           v-for="voice in voiceOptions"
@@ -29,10 +18,6 @@
           </div>
         </div>
       </div>
-      <el-button link type="primary" class="voice-library">
-        <el-icon><Headset /></el-icon>
-        查音色库
-      </el-button>
     </div>
 
     <div class="custom-section">
