@@ -67,7 +67,7 @@
                 <div class="sentence-content">
                   <div class="sentence-text-row">
                     <div class="sentence-text">
-                      {{ sentence.content }}
+                      {{ getCombinedSentenceContentReactive(sentence) }}
                     </div>
                     <div class="sentence-links">
                       <SentenceActionLinks
@@ -84,10 +84,6 @@
             </div>
 
             <div class="sentence-quick-actions">
-              <span class="sentence-status" :class="{ success: !!sentence.audio_url }">
-                {{ sentence.audio_url ? '已合成' : '未合成' }}
-              </span>
-              <span class="sentence-id">ID {{ sentence.sentence_id }}</span>
               <el-button link type="primary" @click="toggleEdit(sentence)">
                 {{ editingSentenceId === sentence.sentence_id ? '收起精修' : '编辑' }}
               </el-button>
@@ -114,7 +110,7 @@
 
               <div class="sub-textarea-list">
                 <div
-                  v-for="(sub, subIndex) in getSubSentences(sentence.sentence_id)"
+                  v-for="(sub, subIndex) in getSubSentences(sentence.sentence_id).filter(sub => sub.parent_id !== 0)"
                   :key="sub.sentence_id"
                   class="sub-textarea-item"
                   :class="{ active: editingSubSentenceId === sub.sentence_id }"
@@ -210,13 +206,52 @@
         合并音频
       </el-button>
     </div>
+
+    <!-- 断句标准对话框 -->
+    <el-dialog
+      v-model="splitStandardDialogVisible"
+      title="断句标准"
+      width="400px"
+      @close="handleSplitStandardDialogClose"
+    >
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <el-radio-group v-model="splitStandardType">
+          <el-radio label="punctuation">大符号</el-radio>
+          <el-radio label="charCount">字符数</el-radio>
+        </el-radio-group>
+        <div v-if="splitStandardType === 'charCount'" style="margin-left: 24px; display: flex; align-items: center; gap: 8px;">
+          <span style="white-space: nowrap;">字符数：</span>
+          <el-input
+            v-model.number="splitStandardCharCount"
+            type="number"
+            :min="1"
+            placeholder="请输入字符数"
+            style="width: 150px;"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="splitStandardDialogVisible = false">取消</el-button>
+        <el-button 
+          type="primary" 
+          @click="handleSplitStandardConfirm"
+          :disabled="splitStandardType === 'charCount' && (!splitStandardCharCount || splitStandardCharCount <= 0)"
+        >
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, onMounted, reactive, computed, watch, h, defineComponent, defineOptions } from 'vue'
+
+defineOptions({
+  name: 'Sentences'
+})
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox, ElRadioGroup, ElRadio, ElDialog, ElInput } from 'element-plus'
 import { getTaskSentences, mergeAudio } from '@/api/task'
 import {
   deleteSentence,
@@ -231,6 +266,13 @@ import SentenceActionLinks from '@/components/SentenceActionLinks.vue'
 import RichTextEditor from '@/components/editor/RichTextEditor.vue'
 
 const route = useRoute()
+const router = useRouter()
+
+// 用于存储断句标准选择的值
+const splitStandardType = ref('punctuation')
+const splitStandardCharCount = ref(50) // 默认字符数
+const splitStandardDialogVisible = ref(false)
+const splitStandardContext = ref(null) // 存储当前操作的上下文
 const loading = ref(false)
 const merging = ref(false)
 const sentences = ref([])
@@ -321,6 +363,50 @@ const getSubSentences = (parentId) => {
     .filter((item) => item.parent_id === parentId)
     .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
   return [parent, ...children]
+}
+
+// 获取拆句内容：将所有子句子拼接起来（响应式）
+const getCombinedSentenceContent = (sentence) => {
+  // 使用 computed 来确保响应式更新
+  // 但由于这是在模板中调用的函数，我们需要确保它能够追踪到 sentences.value 的变化
+  const children = sentences.value
+    .filter((item) => item.parent_id === sentence.sentence_id)
+    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+  
+  // 如果有子句子，将所有子句子的内容拼接起来
+  if (children.length > 0) {
+    // 访问每个子句子的 content，确保 Vue 能够追踪到变化
+    return children.map(sub => {
+      // 确保访问 content 属性，触发响应式追踪
+      const content = sub.content || ''
+      return content
+    }).join('')
+  }
+  
+  // 如果没有子句子，返回父句子的原始内容
+  return sentence.content || ''
+}
+
+// 为每个根句子创建响应式的拼接内容计算属性
+const sentenceCombinedContentMap = computed(() => {
+  const map = {}
+  rootSentences.value.forEach(sentence => {
+    const children = sentences.value
+      .filter((item) => item.parent_id === sentence.sentence_id)
+      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+    
+    if (children.length > 0) {
+      map[sentence.sentence_id] = children.map(sub => sub.content || '').join('')
+    } else {
+      map[sentence.sentence_id] = sentence.content || ''
+    }
+  })
+  return map
+})
+
+// 获取拆句内容（使用计算属性）
+const getCombinedSentenceContentReactive = (sentence) => {
+  return sentenceCombinedContentMap.value[sentence.sentence_id] || sentence.content || ''
 }
 
 const ensurePolyphonicState = (sentenceId) => {
@@ -517,11 +603,11 @@ const customOptions = [
     max: 10,
     step: 1
   },
-  { label: '断句标准', icon: 'Tickets' },
+  { label: '断句标准', icon: 'Tickets', actionKey: 'split-standard' },
   { label: '停顿', icon: 'Timer', actionKey: 'pause' },
   { label: '多音字', icon: 'ChatLineSquare', actionKey: 'polyphonic' },
   { label: '插入静音', icon: 'Bell', actionKey: 'silence' },
-  { label: '阅读规范', icon: 'CollectionTag' }
+  { label: '阅读规范', icon: 'CollectionTag', actionKey: 'reading-rules' }
 ]
 
 onMounted(() => {
@@ -577,9 +663,59 @@ const toggleEdit = async (sentence) => {
   }
 
   editingSentenceId.value = sentence.sentence_id
-  editingSubSentenceId.value = sentence.sentence_id
-  await loadSentenceDetail(sentence.sentence_id, sentence.content)
-  selectSubSentence(sentence)
+  
+  // 检查是否有子句子（编辑区域只显示子句子）
+  const children = sentences.value.filter(
+    (item) => item.parent_id === sentence.sentence_id
+  )
+  
+  // 如果没有子句子，默认进入"大符号模式"：创建一个子句子，内容是父句子的内容
+  if (children.length === 0) {
+    try {
+      const newSentence = await insertSentenceAfter(sentence.sentence_id, { content: sentence.content })
+      
+      if (newSentence && newSentence.sentence_id) {
+        // 规范化参数
+        const normalized = normalizeSentenceParams({ ...newSentence })
+        
+        // 找到父句子的位置，插入到父句子之后
+        const parentIndex = sentences.value.findIndex(
+          (item) => item.sentence_id === sentence.sentence_id
+        )
+        
+        if (parentIndex !== -1) {
+          sentences.value.splice(parentIndex + 1, 0, normalized)
+        } else {
+          sentences.value.push(normalized)
+        }
+        
+        // 初始化多音字状态
+        ensurePolyphonicState(normalized.sentence_id)
+        
+        // 选中新创建的子句子
+        editingSubSentenceId.value = normalized.sentence_id
+        await loadSentenceDetail(normalized.sentence_id, normalized.content)
+        selectSubSentence(normalized)
+        return
+      }
+    } catch (error) {
+      console.error('创建默认子句子失败:', error)
+      // 如果创建失败，继续使用父句子
+    }
+  }
+  
+  // 如果有子句子，选中第一个子句子
+  if (children.length > 0) {
+    const firstChild = children.sort((a, b) => (a.display_order || 0) - (b.display_order || 0))[0]
+    editingSubSentenceId.value = firstChild.sentence_id
+    await loadSentenceDetail(firstChild.sentence_id, firstChild.content)
+    selectSubSentence(firstChild)
+  } else {
+    // 如果没有子句子且创建失败，使用父句子（虽然不会显示在编辑区域）
+    editingSubSentenceId.value = sentence.sentence_id
+    await loadSentenceDetail(sentence.sentence_id, sentence.content)
+    selectSubSentence(sentence)
+  }
 }
 
 const closeEditing = () => {
@@ -663,13 +799,45 @@ const handleInsertAfter = async (sentenceId) => {
 
     const newSentence = await insertSentenceAfter(sentenceId, { content: value })
     if (newSentence && newSentence.sentence_id) {
-      pendingSelectSubSentenceId.value = newSentence.sentence_id
+      // 规范化参数
+      const normalized = normalizeSentenceParams({ ...newSentence })
+      
+      // 找到插入位置（在当前句子之后）
+      const currentIndex = sentences.value.findIndex(
+        (item) => item.sentence_id === sentenceId
+      )
+      
+      if (currentIndex !== -1) {
+        // 插入到正确位置
+        sentences.value.splice(currentIndex + 1, 0, normalized)
+      } else {
+        // 如果找不到，直接添加到末尾
+        sentences.value.push(normalized)
+      }
+      
+      // 初始化多音字状态
+      ensurePolyphonicState(normalized.sentence_id)
+      
+      // 如果当前正在编辑父句子，自动选中新插入的句子
+      const clickedSentence = findSentenceById(sentenceId)
+      if (clickedSentence) {
+        // 确定根句子 ID（如果 parent_id === 0，就是它自己；否则就是 parent_id）
+        const rootId = clickedSentence.parent_id === 0 
+          ? clickedSentence.sentence_id 
+          : clickedSentence.parent_id
+        
+        // 如果当前正在编辑这个根句子，并且新插入的句子属于这个根句子组
+        if (editingSentenceId.value === rootId && normalized.parent_id === rootId) {
+          selectSubSentence(normalized)
+        }
+      }
+      
+      ElMessage.success('插入成功')
     }
-    ElMessage.success('插入成功')
-    loadSentences()
   } catch (error) {
     if (error !== 'cancel') {
       console.error('插入失败:', error)
+      ElMessage.error('插入失败')
     }
   }
 }
@@ -850,6 +1018,227 @@ const promptSilenceDuration = async () => {
   }
 }
 
+const handleSplitStandard = () => {
+  if (!editingSentenceId.value) {
+    ElMessage.warning('请先选择一个句子进行编辑')
+    return
+  }
+
+  const rootSentence = findSentenceById(editingSentenceId.value)
+  if (!rootSentence) {
+    ElMessage.error('未找到当前句子')
+    return
+  }
+
+  // 存储上下文
+  splitStandardContext.value = {
+    rootSentence,
+    originalText: rootSentence.content || ''
+  }
+
+  // 重置选择值
+  splitStandardType.value = 'punctuation'
+
+  // 显示对话框
+  splitStandardDialogVisible.value = true
+}
+
+const handleSplitStandardDialogClose = () => {
+  splitStandardDialogVisible.value = false
+  splitStandardContext.value = null
+  // 重置选择值
+  splitStandardType.value = 'punctuation'
+  splitStandardCharCount.value = 50
+}
+
+const handleSplitStandardConfirm = () => {
+  if (!splitStandardContext.value) {
+    splitStandardDialogVisible.value = false
+    return
+  }
+
+  const { rootSentence, originalText } = splitStandardContext.value
+  const selectedType = splitStandardType.value
+
+  if (selectedType === 'punctuation') {
+    // 大符号：清空所有输入文本，将原始拆句作为输入文本
+    handleSplitByPunctuation(rootSentence, originalText)
+    splitStandardDialogVisible.value = false
+    splitStandardContext.value = null
+  } else if (selectedType === 'charCount') {
+    // 字符数：使用对话框中输入的字符数
+    const charCount = parseInt(splitStandardCharCount.value, 10)
+    if (Number.isNaN(charCount) || charCount <= 0) {
+      ElMessage.error('请输入大于 0 的字符数')
+      return
+    }
+    handleSplitByCharCount(rootSentence, originalText, charCount)
+    splitStandardDialogVisible.value = false
+    splitStandardContext.value = null
+  } else {
+    ElMessage.warning('请选择断句方式')
+  }
+}
+
+
+const handleSplitByPunctuation = async (rootSentence, originalText) => {
+  // 第一步：一次性清空所有输入文本（所有子句子）
+  // 找到所有需要删除的子句子：
+  // 1. 直接子句子：parent_id === rootSentence.sentence_id
+  // 2. 嵌套子句子：parent_id 指向其他子句子的句子
+  // 需要递归找到所有相关的子句子
+  const getAllChildrenIds = (parentId) => {
+    const directChildren = sentences.value.filter(
+      (item) => item.parent_id === parentId
+    )
+    const allIds = directChildren.map(sub => sub.sentence_id)
+    // 递归获取子句子的子句子
+    directChildren.forEach(sub => {
+      const nestedIds = getAllChildrenIds(sub.sentence_id)
+      allIds.push(...nestedIds)
+    })
+    return allIds
+  }
+  
+  // 获取所有需要删除的子句子ID（包括嵌套的）
+  const deleteIds = getAllChildrenIds(rootSentence.sentence_id)
+  
+  // 直接从 sentences.value 中移除所有子句子（保留父句子）
+  sentences.value = sentences.value.filter(
+    (item) => item.sentence_id === rootSentence.sentence_id || !deleteIds.includes(item.sentence_id)
+  )
+  
+  // 异步删除（不等待，避免阻塞）
+  Promise.all(deleteIds.map(id => deleteSentence(id).catch(err => {
+    console.error('删除子句子失败:', id, err)
+  })))
+
+  // 第二步：创建一个新的子句子，内容是父句子的内容，作为"输入文本1"
+  // 注意：不修改父句子的内容，父句子保持原样，但编辑区域只显示子句子
+  try {
+    const newSentence = await insertSentenceAfter(rootSentence.sentence_id, { content: originalText })
+    
+    if (newSentence && newSentence.sentence_id) {
+      // 规范化参数
+      const normalized = normalizeSentenceParams({ ...newSentence })
+      
+      // 找到父句子的位置，插入到父句子之后
+      const parentIndex = sentences.value.findIndex(
+        (item) => item.sentence_id === rootSentence.sentence_id
+      )
+      
+      if (parentIndex !== -1) {
+        sentences.value.splice(parentIndex + 1, 0, normalized)
+      } else {
+        sentences.value.push(normalized)
+      }
+      
+      // 初始化多音字状态
+      ensurePolyphonicState(normalized.sentence_id)
+      
+      // 自动选中新创建的子句子
+      selectSubSentence(normalized)
+    }
+  } catch (error) {
+    console.error('创建子句子失败:', error)
+    ElMessage.error('创建子句子失败')
+    return
+  }
+
+  ElMessage.success('已按大符号重置：清空所有输入文本，并将父句复制为输入文本1')
+}
+
+const handleSplitByCharCount = async (rootSentence, originalText, charCount) => {
+  if (!originalText) {
+    ElMessage.warning('原始拆句文本为空')
+    return
+  }
+
+  // 按字符数拆分文本
+  const chunks = []
+  for (let i = 0; i < originalText.length; i += charCount) {
+    chunks.push(originalText.slice(i, i + charCount))
+  }
+
+  if (chunks.length === 0) {
+    ElMessage.warning('拆分结果为空')
+    return
+  }
+
+  // 获取所有子句子（包括父句子）
+  const subSentences = getSubSentences(rootSentence.sentence_id)
+  const existingCount = subSentences.length
+  const chunksCount = chunks.length
+
+  // 第一步：先清空所有现有的子句子（和"大符号"逻辑一样，清空所有输入文本）
+  // 递归查找所有子句子并删除
+  const getAllChildrenIds = (parentId) => {
+    const directChildren = sentences.value.filter(
+      (item) => item.parent_id === parentId
+    )
+    const allIds = directChildren.map(sub => sub.sentence_id)
+    // 递归获取子句子的子句子
+    directChildren.forEach(sub => {
+      const nestedIds = getAllChildrenIds(sub.sentence_id)
+      allIds.push(...nestedIds)
+    })
+    return allIds
+  }
+  
+  // 获取所有需要删除的子句子ID（包括嵌套的）
+  const deleteIds = getAllChildrenIds(rootSentence.sentence_id)
+  
+  // 直接从 sentences.value 中移除所有子句子（保留父句子，父句子内容不变）
+  sentences.value = sentences.value.filter(
+    (item) => item.sentence_id === rootSentence.sentence_id || !deleteIds.includes(item.sentence_id)
+  )
+  
+  // 异步删除（不等待，避免阻塞）
+  Promise.all(deleteIds.map(id => deleteSentence(id).catch(err => {
+    console.error('删除子句子失败:', id, err)
+  })))
+
+  // 第二步：创建新的子句子（从第一段开始，因为父句子内容不变，不显示在编辑区域）
+  // 注意：父句子内容保持不变，编辑区域只显示子句子
+  let lastSub = rootSentence
+  for (let i = 0; i < chunksCount; i++) {
+    try {
+      const newSentence = await insertSentenceAfter(lastSub.sentence_id, { content: chunks[i] })
+      
+      if (newSentence && newSentence.sentence_id) {
+        // 规范化参数
+        const normalized = normalizeSentenceParams({ ...newSentence })
+        
+        // 找到插入位置（在最后一个句子之后）
+        const lastIndex = sentences.value.findIndex(
+          (item) => item.sentence_id === lastSub.sentence_id
+        )
+        
+        if (lastIndex !== -1) {
+          sentences.value.splice(lastIndex + 1, 0, normalized)
+        } else {
+          sentences.value.push(normalized)
+        }
+        
+        // 初始化多音字状态
+        ensurePolyphonicState(normalized.sentence_id)
+        
+        // 更新 lastSub 为刚插入的句子，以便下次插入时使用
+        lastSub = normalized
+      }
+    } catch (error) {
+      console.error('创建新子句子失败:', error)
+    }
+  }
+
+  // 如果当前选中的是父句子，更新编辑表单为拆分后的第一段文本
+  if (editingSubSentenceId.value === rootSentence.sentence_id) {
+    editingForm.content = chunks[0]
+  }
+
+  ElMessage.success(`已按 ${charCount} 个字符拆分为 ${chunksCount} 句`)
+}
+
 const handleCustomAction = (actionKey) => {
   if (actionKey === 'pause') {
     if (!isPauseEnabled.value) return
@@ -858,6 +1247,10 @@ const handleCustomAction = (actionKey) => {
     togglePolyphonicMode()
   } else if (actionKey === 'silence') {
     promptSilenceDuration()
+  } else if (actionKey === 'split-standard') {
+    handleSplitStandard()
+  } else if (actionKey === 'reading-rules') {
+    router.push('/reading-rules')
   }
 }
 
@@ -996,8 +1389,11 @@ const formatDuration = (seconds) => {
 }
 
 .sentence-quick-actions {
+  width: 80px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 8px;
   color: #666;
   font-size: 13px;

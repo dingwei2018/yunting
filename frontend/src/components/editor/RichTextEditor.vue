@@ -322,7 +322,7 @@ onBeforeUnmount(() => {
 
 .rich-text-editor__content :deep(.ProseMirror) {
   min-height: 120px;
-  padding: 10px 16px;
+  padding: 10px 240px 10px 10px;
   outline: none;
   font-size: 14px;
   line-height: 1.6;
