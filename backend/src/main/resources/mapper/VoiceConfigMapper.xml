@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yunting.mapper.VoiceConfigMapper">
+
+    <resultMap id="VoiceConfigResultMap" type="com.yunting.model.VoiceConfig">
+        <id property="voiceId" column="voice_id"/>
+        <result property="voiceName" column="voice_name"/>
+        <result property="voiceType" column="voice_type"/>
+        <result property="language" column="language"/>
+        <result property="isRecommended" column="is_recommended"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectList" resultMap="VoiceConfigResultMap">
+        SELECT *
+        FROM voice_configs
+        <where>
+            <if test="isRecommended != null">
+                is_recommended = #{isRecommended}
+            </if>
+            <if test="language != null and language != ''">
+                <if test="isRecommended != null">
+                    AND
+                </if>
+                language = #{language}
+            </if>
+        </where>
+        ORDER BY sort_order ASC, created_at DESC
+    </select>
+
+</mapper>
+
+

@@ -99,6 +99,7 @@ docker run -d -p 8080:8080 --name yunting-backend yunting-backend:latest
 - `POST /api/reading-rules/apply?ruleid=&taskid=` - 阅读规范应用
 - `POST /api/tasks/audio/merge?taskid={task_id}` - 合并音频
 - `GET /api/audio/merges/merge?mergeid={merge_id}` - 查询合并状态
+- `GET /api/voices?is_recommended=1&language=zh-CN` - 获取音色列表
 
 ## 注意事项
 
