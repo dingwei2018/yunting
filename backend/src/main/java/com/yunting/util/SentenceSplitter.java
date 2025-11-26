@@ -8,12 +8,17 @@ import java.util.Set;
 
 public final class SentenceSplitter {
 
-    private static final Set<Character> DELIMITERS = Set.of('。', '！', '？', '!', '?', ';', '；');
+    private static final Set<Character> DEFAULT_DELIMITERS = Set.of('。', '！', '？', '!', '?', ';', '；');
 
     private SentenceSplitter() {
     }
 
     public static List<String> split(String text) {
+        return split(text, null);
+    }
+
+    public static List<String> split(String text, String customDelimiters) {
+        Set<Character> delimiters = resolveDelimiters(customDelimiters);
         List<String> result = new ArrayList<>();
         if (!StringUtils.hasText(text)) {
             return result;
@@ -23,7 +28,7 @@ public final class SentenceSplitter {
         for (int i = 0; i < normalized.length(); i++) {
             char ch = normalized.charAt(i);
             buffer.append(ch);
-            if (DELIMITERS.contains(ch) || ch == '\n') {
+            if (delimiters.contains(ch) || ch == '\n') {
                 addSentence(result, buffer.toString());
                 buffer.setLength(0);
             }
@@ -32,6 +37,17 @@ public final class SentenceSplitter {
             addSentence(result, buffer.toString());
         }
         return result;
+    }
+
+    private static Set<Character> resolveDelimiters(String custom) {
+        if (!StringUtils.hasText(custom)) {
+            return DEFAULT_DELIMITERS;
+        }
+        Set<Character> set = new java.util.HashSet<>();
+        for (char c : custom.toCharArray()) {
+            set.add(c);
+        }
+        return set.isEmpty() ? DEFAULT_DELIMITERS : set;
     }
 
     private static void addSentence(List<String> result, String sentence) {

@@ -50,7 +50,7 @@ public class TaskServiceImpl implements TaskService {
         if (content.codePointCount(0, content.length()) > 10000) {
             throw new BusinessException(10400, "文本内容不能超过10000字");
         }
-        List<String> sentences = SentenceSplitter.split(content);
+        List<String> sentences = SentenceSplitter.split(content, request.getDelimiters());
         if (CollectionUtils.isEmpty(sentences)) {
             throw new BusinessException("未识别到有效内容，请检查文本");
         }
@@ -112,7 +112,7 @@ public class TaskServiceImpl implements TaskService {
     public TaskDetailDTO getTaskDetail(Long taskId) {
         Task task = taskMapper.selectById(taskId);
         if (task == null) {
-            throw new BusinessException(404, "任务不存在");
+            throw new BusinessException(10404, "任务不存在");
         }
         List<BreakingSentence> breakingSentences = breakingSentenceMapper.selectByTaskId(taskId);
         TaskDetailDTO detail = toTaskDetailDTO(task);
@@ -126,6 +126,7 @@ public class TaskServiceImpl implements TaskService {
     public TaskListResponseDTO listTasks(Integer page, Integer pageSize, Integer status) {
         int currentPage = (page == null || page < 1) ? 1 : page;
         int size = (pageSize == null || pageSize < 1) ? 20 : pageSize;
+
         int offset = (currentPage - 1) * size;
         List<Task> tasks = taskMapper.selectList(status, offset, size);
         long total = taskMapper.countByStatus(status);

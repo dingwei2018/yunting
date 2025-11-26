@@ -5,8 +5,8 @@ package com.yunting.common;
  */
 public final class ResponseUtil {
 
-    private static final int SUCCESS_CODE = 0;
-    private static final int DEFAULT_ERROR_CODE = -1;
+    private static final int SUCCESS_CODE = 10200;
+    private static final int DEFAULT_ERROR_CODE = 10500;
 
     private ResponseUtil() {
     }

@@ -4,12 +4,10 @@ import com.yunting.common.ApiResponse;
 import com.yunting.common.ResponseUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import jakarta.validation.ConstraintViolationException;
@@ -28,7 +26,6 @@ public class GlobalExceptionHandler {
         return ResponseUtil.error(ex.getCode(), ex.getMessage());
     }
 
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
     public ApiResponse<Void> handleValidationException(Exception ex) {
         String message = "请求参数不合法";
@@ -38,27 +35,25 @@ public class GlobalExceptionHandler {
             message = be.getBindingResult().getFieldError().getDefaultMessage();
         }
         log.warn("Validation failed: {}", message);
-        return ResponseUtil.error(HttpStatus.BAD_REQUEST.value(), message);
+        return ResponseUtil.error(10400, message);
     }
 
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
     @ExceptionHandler(ConstraintViolationException.class)
     public ApiResponse<Void> handleConstraintViolation(ConstraintViolationException ex) {
         log.warn("Constraint violation: {}", ex.getMessage());
-        return ResponseUtil.error(HttpStatus.BAD_REQUEST.value(), ex.getMessage());
+        return ResponseUtil.error(10400, ex.getMessage());
     }
 
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ApiResponse<Void> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
         log.warn("HTTP message not readable", ex);
-        return ResponseUtil.error(HttpStatus.BAD_REQUEST.value(), "请求体格式错误");
+        return ResponseUtil.error(10400, "请求参数格式错误");
     }
 
     @ExceptionHandler(Exception.class)
     public ApiResponse<Void> handleException(Exception ex) {
         log.error("Unhandled exception", ex);
-        return ResponseUtil.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), "服务器开小差了，请稍后再试");
+        return ResponseUtil.error(10500, "服务器开小差了，请稍后再试");
     }
 }
 
