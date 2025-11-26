@@ -38,5 +38,65 @@
     <select id="countByTaskId" parameterType="long" resultType="int">
         SELECT COUNT(1) FROM breaking_sentences WHERE task_id = #{taskId}
     </select>
+
+    <select id="selectPageByTaskId" resultMap="BreakingSentenceResultMap">
+        SELECT *
+        FROM breaking_sentences
+        WHERE task_id = #{taskId}
+        ORDER BY sequence ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectById" parameterType="long" resultMap="BreakingSentenceResultMap">
+        SELECT * FROM breaking_sentences WHERE breaking_sentence_id = #{breakingSentenceId}
+    </select>
+
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM breaking_sentences WHERE breaking_sentence_id = #{breakingSentenceId}
+    </delete>
+
+    <update id="decrementSequenceAfter">
+        UPDATE breaking_sentences
+        SET sequence = sequence - 1
+        WHERE task_id = #{taskId}
+          AND sequence > #{sequence}
+    </update>
+
+    <select id="selectByIds" resultMap="BreakingSentenceResultMap">
+        SELECT *
+        FROM breaking_sentences
+        WHERE breaking_sentence_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY sequence ASC
+    </select>
+
+    <select id="selectPendingByTaskId" parameterType="long" resultMap="BreakingSentenceResultMap">
+        SELECT *
+        FROM breaking_sentences
+        WHERE task_id = #{taskId}
+          AND synthesis_status != 2
+        ORDER BY sequence ASC
+    </select>
+
+    <update id="updateSynthesisInfo">
+        UPDATE breaking_sentences
+        SET synthesis_status = #{status},
+            audio_url = #{audioUrl},
+            audio_duration = #{audioDuration},
+            updated_at = NOW()
+        WHERE breaking_sentence_id = #{breakingSentenceId}
+    </update>
+
+    <update id="resetSynthesisStatus">
+        UPDATE breaking_sentences
+        SET synthesis_status = 0,
+            audio_url = NULL,
+            audio_duration = NULL,
+            ssml = ssml,
+            updated_at = NOW()
+        WHERE breaking_sentence_id = #{breakingSentenceId}
+    </update>
 </mapper>
 

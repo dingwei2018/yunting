@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yunting.mapper.SynthesisSettingMapper">
+
+    <resultMap id="SynthesisSettingResultMap" type="com.yunting.model.SynthesisSetting">
+        <id property="settingId" column="setting_id"/>
+        <result property="breakingSentenceId" column="breaking_sentence_id"/>
+        <result property="voiceId" column="voice_id"/>
+        <result property="voiceName" column="voice_name"/>
+        <result property="speechRate" column="speech_rate"/>
+        <result property="volume" column="volume"/>
+        <result property="pitch" column="pitch"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectByBreakingSentenceId" parameterType="long" resultMap="SynthesisSettingResultMap">
+        SELECT *
+        FROM synthesis_settings
+        WHERE breaking_sentence_id = #{breakingSentenceId}
+    </select>
+
+    <select id="selectByBreakingSentenceIds" resultMap="SynthesisSettingResultMap">
+        SELECT *
+        FROM synthesis_settings
+        WHERE breaking_sentence_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <insert id="upsert" parameterType="com.yunting.model.SynthesisSetting">
+        INSERT INTO synthesis_settings (breaking_sentence_id, voice_id, voice_name, speech_rate, volume, pitch,
+                                        created_at, updated_at)
+        VALUES (#{breakingSentenceId}, #{voiceId}, #{voiceName}, #{speechRate}, #{volume}, #{pitch}, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE
+            voice_id = VALUES(voice_id),
+            voice_name = VALUES(voice_name),
+            speech_rate = VALUES(speech_rate),
+            volume = VALUES(volume),
+            pitch = VALUES(pitch),
+            updated_at = NOW()
+    </insert>
+
+</mapper>
+
+

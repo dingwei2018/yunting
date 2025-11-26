@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yunting.mapper.PauseSettingMapper">
+
+    <resultMap id="PauseSettingResultMap" type="com.yunting.model.PauseSetting">
+        <id property="pauseId" column="pause_id"/>
+        <result property="breakingSentenceId" column="breaking_sentence_id"/>
+        <result property="position" column="position"/>
+        <result property="duration" column="duration"/>
+        <result property="type" column="type"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="selectByBreakingSentenceId" parameterType="long" resultMap="PauseSettingResultMap">
+        SELECT *
+        FROM pause_settings
+        WHERE breaking_sentence_id = #{breakingSentenceId}
+        ORDER BY position ASC
+    </select>
+
+    <select id="selectByBreakingSentenceIds" resultMap="PauseSettingResultMap">
+        SELECT *
+        FROM pause_settings
+        WHERE breaking_sentence_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY breaking_sentence_id, position ASC
+    </select>
+
+</mapper>
+
+

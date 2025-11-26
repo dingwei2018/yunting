@@ -12,5 +12,26 @@ public interface BreakingSentenceMapper {
     List<BreakingSentence> selectByTaskId(@Param("taskId") Long taskId);
 
     int countByTaskId(@Param("taskId") Long taskId);
+
+    List<BreakingSentence> selectPageByTaskId(@Param("taskId") Long taskId,
+                                              @Param("offset") int offset,
+                                              @Param("limit") int limit);
+
+    BreakingSentence selectById(@Param("breakingSentenceId") Long breakingSentenceId);
+
+    int deleteById(@Param("breakingSentenceId") Long breakingSentenceId);
+
+    int decrementSequenceAfter(@Param("taskId") Long taskId, @Param("sequence") int sequence);
+
+    List<BreakingSentence> selectByIds(@Param("ids") List<Long> breakingSentenceIds);
+
+    List<BreakingSentence> selectPendingByTaskId(@Param("taskId") Long taskId);
+
+    int updateSynthesisInfo(@Param("breakingSentenceId") Long breakingSentenceId,
+                            @Param("status") int status,
+                            @Param("audioUrl") String audioUrl,
+                            @Param("audioDuration") Integer audioDuration);
+
+    int resetSynthesisStatus(@Param("breakingSentenceId") Long breakingSentenceId);
 }
 

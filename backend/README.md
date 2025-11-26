@@ -82,9 +82,16 @@ docker run -d -p 8080:8080 --name yunting-backend yunting-backend:latest
 ## API 接口
 
 - `GET /api/health` - 健康检查
-- `POST /api/tasks` - 创建任务并自动拆句（返回拆句列表）
-- `GET /api/tasks/taskid={task_id}` 或 `GET /api/tasks?taskid={task_id}` - 获取任务详情
-- `GET /api/tasks?page=1&page_size=20&status=2` - 分页查询任务列表（支持状态筛选）
+- `POST /api/tasks/createTask?content=...` - 创建任务并自动拆句
+- `GET /api/tasks/getTaskDetail?taskid={task_id}` - 获取任务详情
+- `GET /api/tasks/listTasks?page=1&page_size=20&status=2` - 分页查询任务列表
+- `GET /api/tasks/breaking-sentences?taskid={task_id}` - 获取断句列表
+- `GET /api/breaking-sentences/info?breaking_sentence_id={id}` - 获取断句详情
+- `DELETE /api/breaking-sentences?breaking_sentence_id={id}` - 删除断句
+- `POST /api/breaking-sentences/synthesize?breaking_sentence_id={id}` - 合成单个断句
+- `POST /api/breaking-sentences/resynthesize?breaking_sentence_id={id}` - 重新合成断句
+- `POST /api/tasks/synthesize?taskid={task_id}` - 批量合成任务内断句
+- `GET /api/synthesis/tasks?taskid={task_id}` - 查询任务合成状态
 
 ## 注意事项
 
