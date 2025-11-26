@@ -1,48 +1,3 @@
-.sub-textarea-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.sub-textarea-item {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  background: #fff;
-  padding: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.insert-tag {
-  margin-left: 8px;
-  font-size: 12px;
-  color: #f59a23;
-}
-
-.sub-textarea-item.active {
-  border-color: #4f7bff;
-  background: radial-gradient(circle at top, rgba(79, 123, 255, 0.2), rgba(79, 123, 255, 0.05));
-  box-shadow:
-    0 0 0 2px rgba(79, 123, 255, 0.35),
-    0 14px 32px rgba(79, 123, 255, 0.25);
-}
-
-.sub-textarea-item.active :deep(.rich-text-editor) {
-  border: 2px solid #4f7bff;
-  box-shadow:
-    0 0 0 3px rgba(79, 123, 255, 0.2),
-    0 16px 36px rgba(79, 123, 255, 0.2);
-  border-radius: 8px;
-  background: #fff;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.sub-textarea-item :deep(.el-textarea__inner) {
-  background: #f7f9fc;
-  border-radius: 6px;
-}
-
 .sentence-row {
   margin-bottom: 12px;
 }
@@ -122,47 +77,22 @@
                 @clear-text="() => handleClearText(sentence)"
               />
 
-              <div class="sub-textarea-list">
-                <div
-                  v-for="(sub, subIndex) in getSubSentences(sentence.sentence_id).filter(sub => sub.parent_id !== 0)"
-                  :key="sub.sentence_id"
-                  class="sub-textarea-item"
-                  :class="{ active: editingSubSentenceId === sub.sentence_id }"
-                  @click="selectSubSentence(sub)"
-                >
-                  <div class="textarea-toolbar">
-                    <span>
-                      输入文本{{ subIndex + 1 }}
-                      <!-- <span v-if="sub.parent_id !== 0" class="insert-tag">向下插入</span> -->
-                    </span>
-                    <span class="textarea-count">
-                      {{ sub.content?.length || 0 }}/5000
-                    </span>
-                  </div>
-                  <div class="textarea-input">
-                    <RichTextEditor
-                      :ref="(el) => setEditorRef(sub.sentence_id, el)"
-                      v-model="sub.content"
-                      :polyphonic-markers="getPolyphonicMarkers(sub)"
-                      :show-polyphonic-hints="isPolyphonicModeActive(sub)"
-                      :is-active="editingSubSentenceId === sub.sentence_id"
-                      @selection-change="(payload) => handleEditorSelectionChange(sub, payload)"
-                      @content-change="() => handleEditorContentChange(sub)"
-                      @polyphonic-hover="(payload) => handlePolyphonicHover(sub, payload)"
-                      @focus="() => handleEditorFocus(sub)"
-                    />
-                    <div class="textarea-floating-links" @click.stop>
-                      <SentenceActionLinks
-                        :audio-url="sub.audio_url"
-                        @play="handlePlay(sub)"
-                        @synthesize="handleResynthesize(sub.sentence_id)"
-                        @insert-after="handleInsertAfter(sub.sentence_id)"
-                        @delete="handleDelete(sub.sentence_id)"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <SubSentenceEditorList
+                :subs="getSubSentences(sentence.sentence_id).filter(sub => sub.parent_id !== 0)"
+                :editing-sub-sentence-id="editingSubSentenceId"
+                :get-polyphonic-markers="getPolyphonicMarkers"
+                :is-polyphonic-mode-active="isPolyphonicModeActive"
+                :set-editor-ref="setEditorRef"
+                @select-sub="selectSubSentence"
+                @editor-selection-change="({ sub, payload }) => handleEditorSelectionChange(sub, payload)"
+                @editor-content-change="(sub) => handleEditorContentChange(sub)"
+                @polyphonic-hover="({ sub, payload }) => handlePolyphonicHover(sub, payload)"
+                @editor-focus="(sub) => handleEditorFocus(sub)"
+                @play="handlePlay"
+                @synthesize="handleResynthesize"
+                @insert-after="handleInsertAfter"
+                @delete="handleDelete"
+              />
               <div class="textarea-actions">
                 <div class="textarea-buttons">
                   <el-button @click="closeEditing">取消</el-button>
@@ -186,35 +116,17 @@
     </el-card>
 
     <transition name="fade">
-      <div
+      <PolyphonicTooltip
         v-if="polyphonicTooltip.visible"
-        class="polyphonic-tooltip"
-        :style="{ top: `${polyphonicTooltip.position.y}px`, left: `${polyphonicTooltip.position.x}px` }"
-        @mouseenter="cancelTooltipHide"
-        @mouseleave="scheduleTooltipHide"
-      >
-        <div class="tooltip-char">
-          {{ polyphonicTooltip.char }}
-        </div>
-        <div class="tooltip-options">
-          <div
-            v-for="option in polyphonicTooltip.options"
-            :key="option"
-            class="tooltip-option"
-            :class="{ active: option === polyphonicTooltip.selected }"
-            @click.stop="handlePolyphonicOptionSelect(option)"
-          >
-            {{ option }}
-          </div>
-        </div>
-        <div
-          v-if="polyphonicTooltip.selected"
-          class="tooltip-reset"
-          @click.stop="handlePolyphonicOptionSelect(null)"
-        >
-          恢复默认
-        </div>
-      </div>
+        :visible="polyphonicTooltip.visible"
+        :position="polyphonicTooltip.position"
+        :char="polyphonicTooltip.char"
+        :options="polyphonicTooltip.options"
+        :selected="polyphonicTooltip.selected"
+        @mouseenter="handleTooltipMouseEnter"
+        @mouseleave="handleTooltipMouseLeave"
+        @select="handlePolyphonicOptionSelect"
+      />
     </transition>
 
     <div class="merge-footer">
@@ -223,40 +135,16 @@
       </el-button>
     </div>
 
-    <!-- 断句标准对话框 -->
-    <el-dialog
-      v-model="splitStandardDialogVisible"
-      title="断句标准"
-      width="400px"
+    <SplitStandardDialog
+      :visible="splitStandardDialogVisible"
+      :type="splitStandardType"
+      :char-count="splitStandardCharCount"
+      @update:visible="(val) => (splitStandardDialogVisible = val)"
+      @update:type="(val) => (splitStandardType = val)"
+      @update:char-count="(val) => (splitStandardCharCount = val)"
+      @confirm="handleSplitStandardConfirm"
       @close="handleSplitStandardDialogClose"
-    >
-      <div style="display: flex; flex-direction: column; gap: 16px;">
-        <el-radio-group v-model="splitStandardType">
-          <el-radio label="punctuation">大符号</el-radio>
-          <el-radio label="charCount">字符数</el-radio>
-        </el-radio-group>
-        <div v-if="splitStandardType === 'charCount'" style="margin-left: 24px; display: flex; align-items: center; gap: 8px;">
-          <span style="white-space: nowrap;">字符数：</span>
-          <el-input
-            v-model.number="splitStandardCharCount"
-            type="number"
-            :min="1"
-            placeholder="请输入字符数"
-            style="width: 150px;"
-          />
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="splitStandardDialogVisible = false">取消</el-button>
-        <el-button 
-          type="primary" 
-          @click="handleSplitStandardConfirm"
-          :disabled="splitStandardType === 'charCount' && (!splitStandardCharCount || splitStandardCharCount <= 0)"
-        >
-          确定
-        </el-button>
-      </template>
-    </el-dialog>
+    />
   </div>
 </template>
 
@@ -268,36 +156,40 @@ defineOptions({
 })
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElRadioGroup, ElRadio, ElDialog, ElInput } from 'element-plus'
-import { getTaskSentences, mergeAudio } from '@/api/task'
-import {
-  deleteSentence,
-  synthesizeSentence,
-  insertSentenceAfter,
-  getSentence,
-  updateSentence
-} from '@/api/sentence'
 import { polyphonic } from 'pinyin-pro'
 import SentenceTuningPanel from '@/components/SentenceTuningPanel.vue'
 import SentenceActionLinks from '@/components/SentenceActionLinks.vue'
-import RichTextEditor from '@/components/editor/RichTextEditor.vue'
+import SubSentenceEditorList from '@/components/SubSentenceEditorList.vue'
+import SplitStandardDialog from '@/components/SplitStandardDialog.vue'
+import PolyphonicTooltip from '@/components/PolyphonicTooltip.vue'
+import { useSentencesRepository } from '@/composables/useSentencesRepository'
 
 const route = useRoute()
 const router = useRouter()
+const sentencesRepository = useSentencesRepository()
+const {
+  loading,
+  merging,
+  sentences,
+  taskId,
+  loadSentences,
+  handleMergeAudio: mergeAudioTask,
+  insertAfter: insertSentenceAfterLocal,
+  deleteSentence: deleteSentenceApi,
+  synthesizeSentence: synthesizeSentenceApi,
+  getSentence: getSentenceApi,
+  updateSentence: updateSentenceApi
+} = sentencesRepository
 
 // 用于存储断句标准选择的值
 const splitStandardType = ref('punctuation')
 const splitStandardCharCount = ref(50) // 默认字符数
 const splitStandardDialogVisible = ref(false)
 const splitStandardContext = ref(null) // 存储当前操作的上下文
-const loading = ref(false)
-const merging = ref(false)
-const sentences = ref([])
 const audioRefs = ref({})
 const editingSentenceId = ref(null)
 const editingSubSentenceId = ref(null)
 const pendingSelectSubSentenceId = ref(null)
-
-const PAUSE_MARK = '<pause>'
 
 const editingForm = reactive({
   sentenceId: '',
@@ -318,18 +210,6 @@ const clampSpeed = (value) => {
   return Math.min(10, Math.max(-10, Math.round(value)))
 }
 
-const sanitizeTextareaValue = (value) => {
-  if (typeof value !== 'string') return ''
-  return value.replace(/⏸/g, PAUSE_MARK)
-}
-
-const normalizeSentenceParams = (sentence) => {
-  if (!sentence) return sentence
-  sentence.volume = clampVolume(sentence.volume)
-  sentence.speed = clampSpeed(sentence.speed)
-  return sentence
-}
-
 const editorRefs = reactive({})
 const pauseEligibilityMap = reactive({})
 const polyphonicModeMap = reactive({})
@@ -344,6 +224,7 @@ const polyphonicTooltip = reactive({
   position: { x: 0, y: 0 }
 })
 let polyphonicTooltipTimer = null
+const isTooltipHovering = ref(false)
 
 const findSentenceById = (id) =>
   sentences.value.find((item) => item.sentence_id === id)
@@ -554,7 +435,7 @@ const handleClearText = async (rootSentence) => {
   // 删除多余的子句子
   for (const child of toDelete) {
     try {
-      await deleteSentence(child.sentence_id)
+        await deleteSentenceApi(child.sentence_id)
     } catch (error) {
       console.error('删除子句子失败:', error)
     }
@@ -574,23 +455,13 @@ const handleClearText = async (rootSentence) => {
     refreshPolyphonicForSub(target)
   } else {
     // 没有子句子时创建一个新的空输入框
-    try {
-      const newSentence = await insertSentenceAfter(rootSentence.sentence_id, { content: '' })
-      if (newSentence && newSentence.sentence_id) {
-        const normalized = normalizeSentenceParams({ ...newSentence })
-        const parentIndex = sentences.value.findIndex(
-          (item) => item.sentence_id === rootSentence.sentence_id
-        )
-        if (parentIndex !== -1) {
-          sentences.value.splice(parentIndex + 1, 0, normalized)
-        } else {
-          sentences.value.push(normalized)
-        }
-        ensurePolyphonicState(normalized.sentence_id)
-        target = normalized
-      }
-    } catch (error) {
-      console.error('创建空子句子失败:', error)
+    const newSentence = insertSentenceAfterLocal(rootSentence.sentence_id, {
+      content: '',
+      parent_id: rootSentence.sentence_id
+    })
+    if (newSentence && newSentence.sentence_id) {
+      ensurePolyphonicState(newSentence.sentence_id)
+      target = newSentence
     }
   }
 
@@ -667,7 +538,6 @@ watch(
   }
 )
 
-const taskId = ref('')
 const voiceCategories = [
   { label: '新闻', value: 'news' },
   { label: '小说', value: 'novel' }
@@ -705,19 +575,15 @@ const customOptions = [
 onMounted(() => {
   taskId.value = route.query.task_id
   if (taskId.value) {
-    loadSentences()
+    refreshSentences()
   } else {
     ElMessage.error('缺少任务ID参数')
   }
 })
 
-const loadSentences = async () => {
-  loading.value = true
+const refreshSentences = async () => {
   try {
-    const data = await getTaskSentences(taskId.value)
-    sentences.value = (data.sentences || []).map((item) =>
-      normalizeSentenceParams(item)
-    )
+    await loadSentences(taskId.value)
     sentences.value.forEach((item) => ensurePolyphonicState(item.sentence_id))
     if (editingSentenceId.value) {
       const current = sentences.value.find(
@@ -743,8 +609,6 @@ const loadSentences = async () => {
     }
   } catch (error) {
     console.error('加载句子列表失败:', error)
-  } finally {
-    loading.value = false
   }
 }
 
@@ -763,36 +627,17 @@ const toggleEdit = async (sentence) => {
   
   // 如果没有子句子，默认进入"大符号模式"：创建一个子句子，内容是父句子的内容
   if (children.length === 0) {
-    try {
-      const newSentence = await insertSentenceAfter(sentence.sentence_id, { content: sentence.content })
-      
-      if (newSentence && newSentence.sentence_id) {
-        // 规范化参数
-        const normalized = normalizeSentenceParams({ ...newSentence })
-        
-        // 找到父句子的位置，插入到父句子之后
-        const parentIndex = sentences.value.findIndex(
-          (item) => item.sentence_id === sentence.sentence_id
-        )
-        
-        if (parentIndex !== -1) {
-          sentences.value.splice(parentIndex + 1, 0, normalized)
-        } else {
-          sentences.value.push(normalized)
-        }
-        
-        // 初始化多音字状态
-        ensurePolyphonicState(normalized.sentence_id)
-        
-        // 选中新创建的子句子
-        editingSubSentenceId.value = normalized.sentence_id
-        await loadSentenceDetail(normalized.sentence_id, normalized.content)
-        selectSubSentence(normalized)
-        return
-      }
-    } catch (error) {
-      console.error('创建默认子句子失败:', error)
-      // 如果创建失败，继续使用父句子
+    const newSentence = insertSentenceAfterLocal(sentence.sentence_id, {
+      content: sentence.content,
+      parent_id: sentence.sentence_id
+    })
+
+    if (newSentence && newSentence.sentence_id) {
+      ensurePolyphonicState(newSentence.sentence_id)
+      editingSubSentenceId.value = newSentence.sentence_id
+      await loadSentenceDetail(newSentence.sentence_id, newSentence.content)
+      selectSubSentence(newSentence)
+      return
     }
   }
   
@@ -818,7 +663,7 @@ const closeEditing = () => {
 
 const loadSentenceDetail = async (sentenceId, fallbackContent = '') => {
   try {
-    const detail = await getSentence(sentenceId)
+    const detail = await getSentenceApi(sentenceId)
     editingForm.sentenceId = sentenceId
     editingForm.content = detail.content || fallbackContent
   editingForm.voice = detail.voice || 'default'
@@ -846,7 +691,7 @@ const handleSaveCurrent = async () => {
   }
   const target = currentSubSentence.value
   try {
-    await updateSentence(editingForm.sentenceId, {
+    await updateSentenceApi(editingForm.sentenceId, {
       content: target?.content || editingForm.content,
       voice: editingForm.voice,
       volume: editingForm.volume,
@@ -854,13 +699,33 @@ const handleSaveCurrent = async () => {
       pitch: editingForm.pitch
     })
     ElMessage.success('保存成功')
-    await loadSentences()
+    await refreshSentences()
     if (editingForm.sentenceId) {
       await loadSentenceDetail(editingForm.sentenceId)
     }
   } catch (error) {
     console.error('保存失败:', error)
   }
+}
+
+const removeLocalSentence = (sentenceId) => {
+  const index = sentences.value.findIndex((item) => item.sentence_id === sentenceId)
+  if (index === -1) return null
+  const [removed] = sentences.value.splice(index, 1)
+
+  if (!removed.parent_id || removed.parent_id === 0) {
+    for (let i = sentences.value.length - 1; i >= 0; i -= 1) {
+      if (sentences.value[i].parent_id === removed.sentence_id) {
+        sentences.value.splice(i, 1)
+      }
+    }
+  }
+
+  delete polyphonicStateMap[sentenceId]
+  delete polyphonicModeMap[sentenceId]
+  delete pauseEligibilityMap[sentenceId]
+  delete editorRefs[sentenceId]
+  return removed
 }
 
 const handleDelete = async (sentenceId) => {
@@ -871,9 +736,26 @@ const handleDelete = async (sentenceId) => {
       type: 'warning'
     })
     
-    await deleteSentence(sentenceId)
+    await deleteSentenceApi(sentenceId)
     ElMessage.success('删除成功')
-    loadSentences()
+
+    const removed = removeLocalSentence(sentenceId)
+
+    if (removed && editingSubSentenceId.value === sentenceId) {
+      const siblings = sentences.value
+        .filter((item) => item.parent_id === removed.parent_id && item.parent_id !== 0)
+        .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+
+      if (siblings.length > 0) {
+        const next = siblings[0]
+        editingSubSentenceId.value = next.sentence_id
+        selectSubSentence(next)
+      } else {
+        editingSubSentenceId.value = null
+        editingForm.sentenceId = ''
+        editingForm.content = ''
+      }
+    }
   } catch (error) {
     if (error !== 'cancel') {
       console.error('删除失败:', error)
@@ -889,41 +771,31 @@ const handleInsertAfter = async (sentenceId) => {
       inputPlaceholder: '请输入文本'
     })
 
-    const newSentence = await insertSentenceAfter(sentenceId, { content: value })
+    const clickedSentence = findSentenceById(sentenceId)
+    const parentId =
+      clickedSentence && clickedSentence.parent_id !== 0
+        ? clickedSentence.parent_id
+        : sentenceId
+
+    const newSentence = insertSentenceAfterLocal(sentenceId, {
+      content: value,
+      parent_id: parentId
+    })
+
     if (newSentence && newSentence.sentence_id) {
-      // 规范化参数
-      const normalized = normalizeSentenceParams({ ...newSentence })
-      
-      // 找到插入位置（在当前句子之后）
-      const currentIndex = sentences.value.findIndex(
-        (item) => item.sentence_id === sentenceId
-      )
-      
-      if (currentIndex !== -1) {
-        // 插入到正确位置
-        sentences.value.splice(currentIndex + 1, 0, normalized)
-      } else {
-        // 如果找不到，直接添加到末尾
-        sentences.value.push(normalized)
-      }
-      
-      // 初始化多音字状态
-      ensurePolyphonicState(normalized.sentence_id)
-      
-      // 如果当前正在编辑父句子，自动选中新插入的句子
-      const clickedSentence = findSentenceById(sentenceId)
+      ensurePolyphonicState(newSentence.sentence_id)
+
       if (clickedSentence) {
-        // 确定根句子 ID（如果 parent_id === 0，就是它自己；否则就是 parent_id）
-        const rootId = clickedSentence.parent_id === 0 
-          ? clickedSentence.sentence_id 
-          : clickedSentence.parent_id
-        
-        // 如果当前正在编辑这个根句子，并且新插入的句子属于这个根句子组
-        if (editingSentenceId.value === rootId && normalized.parent_id === rootId) {
-          selectSubSentence(normalized)
+        const rootId =
+          clickedSentence.parent_id === 0
+            ? clickedSentence.sentence_id
+            : clickedSentence.parent_id
+
+        if (editingSentenceId.value === rootId && newSentence.parent_id === rootId) {
+          selectSubSentence(newSentence)
         }
       }
-      
+
       ElMessage.success('插入成功')
     }
   } catch (error) {
@@ -936,11 +808,11 @@ const handleInsertAfter = async (sentenceId) => {
 
 const handleResynthesize = async (sentenceId) => {
   try {
-    await synthesizeSentence(sentenceId)
+    await synthesizeSentenceApi(sentenceId)
     ElMessage.success('重新合成中，请稍候...')
     // 等待一段时间后刷新列表
     setTimeout(() => {
-      loadSentences()
+      refreshSentences()
     }, 2000)
   } catch (error) {
     console.error('重新合成失败:', error)
@@ -959,15 +831,11 @@ const handlePlay = (sentence) => {
 }
 
 const handleMergeAudio = async () => {
-  merging.value = true
   try {
-    await mergeAudio(taskId.value)
+    await mergeAudioTask()
     ElMessage.success('合并音频成功')
-    loadSentences()
   } catch (error) {
     console.error('合并音频失败:', error)
-  } finally {
-    merging.value = false
   }
 }
 
@@ -992,17 +860,22 @@ const hidePolyphonicTooltip = () => {
   polyphonicTooltip.char = ''
   polyphonicTooltip.options = []
   polyphonicTooltip.selected = ''
+  isTooltipHovering.value = false
 }
 
 const scheduleTooltipHide = () => {
+  if (isTooltipHovering.value) return
   cancelTooltipHide()
   polyphonicTooltipTimer = setTimeout(() => {
-    hidePolyphonicTooltip()
-  }, 120)
+    if (!isTooltipHovering.value) {
+      hidePolyphonicTooltip()
+    }
+  }, 250)
 }
 
 const showPolyphonicTooltip = (marker, rect) => {
   cancelTooltipHide()
+  isTooltipHovering.value = false
   const centerX = rect.left + (rect.right - rect.left) / 2
   const bottomY = rect.bottom + 8
   polyphonicTooltip.visible = true
@@ -1040,6 +913,16 @@ const handlePolyphonicHover = (sub, payload) => {
     return
   }
   showPolyphonicTooltip(marker, payload.rect)
+}
+
+const handleTooltipMouseEnter = () => {
+  isTooltipHovering.value = true
+  cancelTooltipHide()
+}
+
+const handleTooltipMouseLeave = () => {
+  isTooltipHovering.value = false
+  scheduleTooltipHide()
 }
 
 const handlePolyphonicOptionSelect = (option) => {
@@ -1201,38 +1084,21 @@ const handleSplitByPunctuation = async (rootSentence, originalText) => {
   )
   
   // 异步删除（不等待，避免阻塞）
-  Promise.all(deleteIds.map(id => deleteSentence(id).catch(err => {
+  Promise.all(deleteIds.map(id => deleteSentenceApi(id).catch(err => {
     console.error('删除子句子失败:', id, err)
   })))
 
   // 第二步：创建一个新的子句子，内容是父句子的内容，作为"输入文本1"
   // 注意：不修改父句子的内容，父句子保持原样，但编辑区域只显示子句子
-  try {
-    const newSentence = await insertSentenceAfter(rootSentence.sentence_id, { content: originalText })
-    
-    if (newSentence && newSentence.sentence_id) {
-      // 规范化参数
-      const normalized = normalizeSentenceParams({ ...newSentence })
-      
-      // 找到父句子的位置，插入到父句子之后
-      const parentIndex = sentences.value.findIndex(
-        (item) => item.sentence_id === rootSentence.sentence_id
-      )
-      
-      if (parentIndex !== -1) {
-        sentences.value.splice(parentIndex + 1, 0, normalized)
-      } else {
-        sentences.value.push(normalized)
-      }
-      
-      // 初始化多音字状态
-      ensurePolyphonicState(normalized.sentence_id)
-      
-      // 自动选中新创建的子句子
-      selectSubSentence(normalized)
-    }
-  } catch (error) {
-    console.error('创建子句子失败:', error)
+  const newSentence = insertSentenceAfterLocal(rootSentence.sentence_id, {
+    content: originalText,
+    parent_id: rootSentence.sentence_id
+  })
+
+  if (newSentence && newSentence.sentence_id) {
+    ensurePolyphonicState(newSentence.sentence_id)
+    selectSubSentence(newSentence)
+  } else {
     ElMessage.error('创建子句子失败')
     return
   }
@@ -1286,7 +1152,7 @@ const handleSplitByCharCount = async (rootSentence, originalText, charCount) => 
   )
   
   // 异步删除（不等待，避免阻塞）
-  Promise.all(deleteIds.map(id => deleteSentence(id).catch(err => {
+  Promise.all(deleteIds.map(id => deleteSentenceApi(id).catch(err => {
     console.error('删除子句子失败:', id, err)
   })))
 
@@ -1294,32 +1160,14 @@ const handleSplitByCharCount = async (rootSentence, originalText, charCount) => 
   // 注意：父句子内容保持不变，编辑区域只显示子句子
   let lastSub = rootSentence
   for (let i = 0; i < chunksCount; i++) {
-    try {
-      const newSentence = await insertSentenceAfter(lastSub.sentence_id, { content: chunks[i] })
-      
-      if (newSentence && newSentence.sentence_id) {
-        // 规范化参数
-        const normalized = normalizeSentenceParams({ ...newSentence })
-        
-        // 找到插入位置（在最后一个句子之后）
-        const lastIndex = sentences.value.findIndex(
-          (item) => item.sentence_id === lastSub.sentence_id
-        )
-        
-        if (lastIndex !== -1) {
-          sentences.value.splice(lastIndex + 1, 0, normalized)
-        } else {
-          sentences.value.push(normalized)
-        }
-        
-        // 初始化多音字状态
-        ensurePolyphonicState(normalized.sentence_id)
-        
-        // 更新 lastSub 为刚插入的句子，以便下次插入时使用
-        lastSub = normalized
-      }
-    } catch (error) {
-      console.error('创建新子句子失败:', error)
+    const newSentence = insertSentenceAfterLocal(lastSub.sentence_id, {
+      content: chunks[i],
+      parent_id: rootSentence.sentence_id
+    })
+
+    if (newSentence && newSentence.sentence_id) {
+      ensurePolyphonicState(newSentence.sentence_id)
+      lastSub = newSentence
     }
   }
 
@@ -1578,59 +1426,6 @@ const formatDuration = (seconds) => {
 .textarea-buttons {
   display: flex;
   gap: 10px;
-}
-
-.polyphonic-tooltip {
-  position: fixed;
-  transform: translate(-50%, 0);
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.12);
-  border-radius: 10px;
-  padding: 12px 16px;
-  z-index: 1000;
-  min-width: 200px;
-}
-
-.polyphonic-tooltip .tooltip-char {
-  font-size: 18px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  color: #1d1f23;
-}
-
-.polyphonic-tooltip .tooltip-options {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.polyphonic-tooltip .tooltip-option {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: #1d1f23;
-}
-
-.polyphonic-tooltip .tooltip-option:hover {
-  border-color: #2f7bff;
-  color: #2f7bff;
-}
-
-.polyphonic-tooltip .tooltip-option.active {
-  background: #ffe6aa;
-  border-color: #f4c762;
-  color: #5f4300;
-}
-
-.polyphonic-tooltip .tooltip-reset {
-  margin-top: 10px;
-  font-size: 13px;
-  color: #5a7efc;
-  cursor: pointer;
-  text-align: right;
 }
 
 .merge-footer {
