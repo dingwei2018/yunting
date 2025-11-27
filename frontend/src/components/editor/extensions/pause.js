@@ -3,6 +3,7 @@ import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import PauseNodeView from '../nodeviews/PauseNodeView.vue'
 
 export const PauseNodeName = 'pause'
+export const DEFAULT_PAUSE_DURATION = '0.5'
 
 export default Node.create({
   name: PauseNodeName,
@@ -14,7 +15,15 @@ export default Node.create({
   draggable: false,
 
   addAttributes() {
-    return {}
+    return {
+      duration: {
+        default: DEFAULT_PAUSE_DURATION,
+        parseHTML: (element) => element.getAttribute('data-pause') || DEFAULT_PAUSE_DURATION,
+        renderHTML: (attributes) => ({
+          'data-pause': attributes.duration || DEFAULT_PAUSE_DURATION
+        })
+      }
+    }
   },
 
   parseHTML() {
@@ -22,7 +31,7 @@ export default Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['span', mergeAttributes(HTMLAttributes, { 'data-pause': 'true' })]
+    return ['span', mergeAttributes(HTMLAttributes)]
   },
 
   addNodeView() {

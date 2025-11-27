@@ -71,9 +71,11 @@
                 :editing-form="editingForm"
                 :custom-disabled="customDisabledState"
                 :active-actions="activeCustomActions"
+                :selection-context="currentSelectionContext"
                 @update:activeVoiceCategory="handleUpdateCategory"
                 @select-voice="selectVoice"
                 @custom-action="handleCustomAction"
+                @request-local-speed="handleRequestLocalSpeed"
                 @clear-text="() => handleClearText(sentence)"
               />
 
@@ -88,6 +90,7 @@
                 @editor-content-change="(sub) => handleEditorContentChange(sub)"
                 @polyphonic-hover="({ sub, payload }) => handlePolyphonicHover(sub, payload)"
                 @editor-focus="(sub) => handleEditorFocus(sub)"
+                @speed-segments-change="handleSpeedSegmentsChange"
                 @play="handlePlay"
                 @synthesize="handleResynthesize"
                 @insert-after="handleInsertAfter"
@@ -145,6 +148,30 @@
       @confirm="handleSplitStandardConfirm"
       @close="handleSplitStandardDialogClose"
     />
+
+    <el-dialog
+      v-model="localSpeedDialog.visible"
+      title="局部语速调整"
+      width="420px"
+      :close-on-click-modal="false"
+    >
+      <div class="local-speed-dialog__body">
+        <div class="local-speed-dialog__info">
+          已选字符：{{ localSpeedDialog.rangeLength }} 个
+        </div>
+        <el-slider
+          v-model="localSpeedDialog.value"
+          :min="-10"
+          :max="10"
+          :step="1"
+          show-input
+        />
+      </div>
+      <template #footer>
+        <el-button @click="handleCancelLocalSpeed">取 消</el-button>
+        <el-button type="primary" @click="handleConfirmLocalSpeed">确 定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -212,6 +239,7 @@ const clampSpeed = (value) => {
 
 const editorRefs = reactive({})
 const pauseEligibilityMap = reactive({})
+const selectionStateMap = reactive({})
 const polyphonicModeMap = reactive({})
 const polyphonicStateMap = reactive({})
 const polyphonicTooltip = reactive({
@@ -284,18 +312,60 @@ const getCombinedSentenceContent = (sentence) => {
   return sentence.content || ''
 }
 
+// 从content中提取纯文本，移除所有标签（停顿、静音、多音字等）
+const extractPlainText = (content, sentenceId = null) => {
+  // 只打印第一句的日志
+  const isFirstSentence = sentenceId && rootSentences.value.length > 0 && rootSentences.value[0].sentence_id === sentenceId
+  if (isFirstSentence) {
+    console.log('extractPlainText [第一句]', sentenceId, '输入长度:', content?.length, '内容:', content)
+  }
+  if (!content || typeof content !== 'string') return ''
+  // 移除停顿标签: <pause:1.0> 或 <pause>
+  let plainText = content.replace(/<pause(?::[\d.]+)?>/g, '')
+  // 移除静音标签: <silence:1.0>
+  plainText = plainText.replace(/<silence:[\d.]+>/g, '')
+  // 移除可能的其他HTML标签（如果有）
+  plainText = plainText.replace(/<[^>]+>/g, '')
+  if (isFirstSentence) {
+    console.log('extractPlainText [第一句]', sentenceId, '输出长度:', plainText?.length, '内容:', plainText)
+  }
+  return plainText
+}
+
 // 为每个根句子创建响应式的拼接内容计算属性
 const sentenceCombinedContentMap = computed(() => {
   const map = {}
-  rootSentences.value.forEach(sentence => {
+  rootSentences.value.forEach((sentence, index) => {
+    const isFirstSentence = index === 0
     const children = sentences.value
       .filter((item) => item.parent_id === sentence.sentence_id)
       .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
     
     if (children.length > 0) {
-      map[sentence.sentence_id] = children.map(sub => sub.content || '').join('')
+      // 提取纯文本，移除所有标签
+      const parts = children.map(sub => {
+        if (isFirstSentence) {
+          console.log('[第一句] 子句子内容 before extract:', sub.sentence_id, '长度:', sub.content?.length, '内容:', sub.content)
+        }
+        const plain = extractPlainText(sub.content || '', sentence.sentence_id)
+        if (isFirstSentence) {
+          console.log('[第一句] 子句子内容 after extract:', sub.sentence_id, '长度:', plain?.length, '内容:', plain)
+        }
+        return plain
+      })
+      map[sentence.sentence_id] = parts.join('')
+      if (isFirstSentence) {
+        console.log('[第一句] 合并后内容:', sentence.sentence_id, '长度:', map[sentence.sentence_id]?.length, '内容:', map[sentence.sentence_id])
+      }
     } else {
-      map[sentence.sentence_id] = sentence.content || ''
+      // 提取纯文本，移除所有标签
+      if (isFirstSentence) {
+        console.log('[第一句] 根句子内容 before extract:', sentence.sentence_id, '长度:', sentence.content?.length, '内容:', sentence.content)
+      }
+      map[sentence.sentence_id] = extractPlainText(sentence.content || '', sentence.sentence_id)
+      if (isFirstSentence) {
+        console.log('[第一句] 根句子内容 after extract:', sentence.sentence_id, '长度:', map[sentence.sentence_id]?.length, '内容:', map[sentence.sentence_id])
+      }
     }
   })
   return map
@@ -303,7 +373,13 @@ const sentenceCombinedContentMap = computed(() => {
 
 // 获取拆句内容（使用计算属性）
 const getCombinedSentenceContentReactive = (sentence) => {
-  return sentenceCombinedContentMap.value[sentence.sentence_id] || sentence.content || ''
+  // sentenceCombinedContentMap 已经处理过纯文本提取，直接返回即可
+  const content = sentenceCombinedContentMap.value[sentence.sentence_id]
+  if (content !== undefined) {
+    return content
+  }
+  // 如果没有在 map 中，说明可能是新数据，需要提取纯文本
+  return extractPlainText(sentence.content || '')
 }
 
 const ensurePolyphonicState = (sentenceId) => {
@@ -406,6 +482,10 @@ const setEditorRef = (id, instance) => {
 
 const handleEditorSelectionChange = (sub, payload = {}) => {
   pauseEligibilityMap[sub.sentence_id] = !!payload?.hasTextBefore
+  selectionStateMap[sub.sentence_id] = {
+    ...payload,
+    sentenceId: sub.sentence_id
+  }
 }
 
 const handleEditorContentChange = (sub) => {
@@ -418,6 +498,60 @@ const handleEditorFocus = (sub) => {
   if (editingSubSentenceId.value !== sub.sentence_id) {
     selectSubSentence(sub)
   }
+}
+
+const currentSelectionContext = computed(() => {
+  if (!editingSubSentenceId.value) return null
+  return selectionStateMap[editingSubSentenceId.value] || null
+})
+
+const localSpeedDialog = reactive({
+  visible: false,
+  sentenceId: '',
+  docFrom: 0,
+  docTo: 0,
+  rangeLength: 0,
+  value: 0
+})
+
+const handleRequestLocalSpeed = (context = {}) => {
+  if (!editingSubSentenceId.value) return
+  const range = context.selectionRange
+  if (!range || range.length <= 0) return
+  localSpeedDialog.visible = true
+  localSpeedDialog.sentenceId = editingSubSentenceId.value
+  localSpeedDialog.docFrom = range.docFrom
+  localSpeedDialog.docTo = range.docTo
+  localSpeedDialog.rangeLength = range.length
+  localSpeedDialog.value = clampSpeed(editingForm.speed)
+}
+
+const handleCancelLocalSpeed = () => {
+  localSpeedDialog.visible = false
+  localSpeedDialog.sentenceId = ''
+  localSpeedDialog.docFrom = 0
+  localSpeedDialog.docTo = 0
+  localSpeedDialog.rangeLength = 0
+}
+
+const handleConfirmLocalSpeed = () => {
+  if (!localSpeedDialog.visible || !localSpeedDialog.sentenceId) {
+    return
+  }
+  const editor = editorRefs[localSpeedDialog.sentenceId]
+  if (editor?.applyLocalSpeedRange) {
+    editor.applyLocalSpeedRange(
+      localSpeedDialog.docFrom,
+      localSpeedDialog.docTo,
+      localSpeedDialog.value
+    )
+  }
+  handleCancelLocalSpeed()
+}
+
+const handleSpeedSegmentsChange = ({ sub, segments }) => {
+  if (!sub) return
+  sub.speedSegments = Array.isArray(segments) ? [...segments] : []
 }
 
 const handleClearText = async (rootSentence) => {
@@ -451,6 +585,7 @@ const handleClearText = async (rootSentence) => {
 
   if (target) {
     target.content = ''
+    target.speedSegments = []
     editingForm.content = ''
     refreshPolyphonicForSub(target)
   } else {
@@ -461,6 +596,7 @@ const handleClearText = async (rootSentence) => {
     })
     if (newSentence && newSentence.sentence_id) {
       ensurePolyphonicState(newSentence.sentence_id)
+      newSentence.speedSegments = []
       target = newSentence
     }
   }
@@ -696,7 +832,8 @@ const handleSaveCurrent = async () => {
       voice: editingForm.voice,
       volume: editingForm.volume,
       speed: editingForm.speed,
-      pitch: editingForm.pitch
+      pitch: editingForm.pitch,
+      speedSegments: target?.speedSegments || []
     })
     ElMessage.success('保存成功')
     await refreshSentences()
@@ -724,6 +861,7 @@ const removeLocalSentence = (sentenceId) => {
   delete polyphonicStateMap[sentenceId]
   delete polyphonicModeMap[sentenceId]
   delete pauseEligibilityMap[sentenceId]
+  delete selectionStateMap[sentenceId]
   delete editorRefs[sentenceId]
   return removed
 }
@@ -831,12 +969,13 @@ const handlePlay = (sentence) => {
 }
 
 const handleMergeAudio = async () => {
-  try {
-    await mergeAudioTask()
-    ElMessage.success('合并音频成功')
-  } catch (error) {
-    console.error('合并音频失败:', error)
-  }
+  // 跳转到合并音频进度页面
+  router.push({
+    name: 'MergeAudioProgress',
+    query: {
+      taskId: taskId.value || route.query.taskId
+    }
+  })
 }
 
 const setAudioRef = (sentenceId, el) => {
@@ -1432,6 +1571,16 @@ const formatDuration = (seconds) => {
   margin-top: 20px;
   display: flex;
   justify-content: center;
+}
+
+.local-speed-dialog__body {
+  padding: 8px 4px;
+}
+
+.local-speed-dialog__info {
+  margin-bottom: 10px;
+  color: #666;
+  font-size: 13px;
 }
 
 .fade-enter-active,

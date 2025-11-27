@@ -21,10 +21,12 @@
           :polyphonic-markers="getPolyphonicMarkers(sub)"
           :show-polyphonic-hints="isPolyphonicModeActive(sub)"
           :is-active="editingSubSentenceId === sub.sentence_id"
+          :speed-segments="sub.speedSegments || []"
           @selection-change="(payload) => emitSelectionChange(sub, payload)"
           @content-change="() => emitContentChange(sub)"
           @polyphonic-hover="(payload) => emitPolyphonicHover(sub, payload)"
           @focus="() => emitEditorFocus(sub)"
+          @speed-segments-change="(segments) => emitSpeedSegmentsChange(sub, segments)"
         />
         <div class="textarea-floating-links" @click.stop>
           <SentenceActionLinks
@@ -77,7 +79,8 @@ const emit = defineEmits([
   'play',
   'synthesize',
   'insert-after',
-  'delete'
+  'delete',
+  'speed-segments-change'
 ])
 
 const emitSelect = (sub) => {
@@ -98,6 +101,10 @@ const emitPolyphonicHover = (sub, payload) => {
 
 const emitEditorFocus = (sub) => {
   emit('editor-focus', sub)
+}
+
+const emitSpeedSegmentsChange = (sub, segments) => {
+  emit('speed-segments-change', { sub, segments })
 }
 
 const setEditorRef = (sentenceId, instance) => {

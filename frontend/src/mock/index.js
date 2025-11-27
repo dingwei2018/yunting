@@ -33,7 +33,8 @@ const buildSentence = (content, parentId = 0) => ({
   pitch: 50,
   parent_id: parentId,
   content_type: parentId === 0 ? 'original' : 'insert',
-  display_order: sentenceSeq
+  display_order: sentenceSeq,
+  speedSegments: []
 })
 
 const splitContent = (content) => {

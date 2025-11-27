@@ -3,6 +3,7 @@ import TextInput from '../views/TextInput.vue'
 import Sentences from '../views/Sentences.vue'
 import Edit from '../views/Edit.vue'
 import ReadingRules from '../views/ReadingRules.vue'
+import MergeAudioProgress from '../views/MergeAudioProgress.vue'
 
 const routes = [
   {
@@ -25,6 +26,11 @@ const routes = [
     path: '/reading-rules',
     name: 'ReadingRules',
     component: ReadingRules
+  },
+  {
+    path: '/merge-audio-progress',
+    name: 'MergeAudioProgress',
+    component: MergeAudioProgress
   }
 ]
 

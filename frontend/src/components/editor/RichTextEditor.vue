@@ -17,13 +17,14 @@ import {
 } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
-import PauseExtension, { PauseNodeName } from './extensions/pause'
+import PauseExtension, { PauseNodeName, DEFAULT_PAUSE_DURATION } from './extensions/pause'
 import SilenceExtension, { SilenceNodeName } from './extensions/silence'
 import PolyphonicMarkersExtension from './extensions/polyphonicMarkers'
+import SpeedSpanExtension, { SpeedSpanNodeName } from './extensions/speedSpan'
 
-const PAUSE_PLACEHOLDER = '<pause>'
-const PAUSE_PLACEHOLDER_REGEX = new RegExp(PAUSE_PLACEHOLDER, 'g')
+const PAUSE_TOKEN_REGEX = /<pause(?::([\d.]+))?>/g
 const SILENCE_PLACEHOLDER_REGEX = /<silence:([\d.]+)>/g
+const PAUSE_SPAN_REGEX = /<span[^>]*data-pause="([^"]*)"[^>]*><\/span>/g
 
 const props = defineProps({
   modelValue: {
@@ -45,6 +46,10 @@ const props = defineProps({
   isActive: {
     type: Boolean,
     default: false
+  },
+  speedSegments: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -60,19 +65,59 @@ const emit = defineEmits([
   'selectionChange',
   'contentChange',
   'polyphonicHover',
-  'focus'
+  'focus',
+  'speedSegmentsChange'
 ])
 
 const markerMap = ref(new Map())
+const lastAppliedSpeedSegments = ref('[]')
+let isSyncingSpeedSegments = false
+
+const mapLeafNodeToText = (node) => {
+  if (!node) return ''
+  if (node.type?.name === PauseNodeName) {
+    const duration = node.attrs?.duration || DEFAULT_PAUSE_DURATION
+    return `<pause:${duration}>`
+  }
+  if (node.type?.name === SilenceNodeName) {
+    const duration = node.attrs?.duration || '0'
+    return `<silence:${duration}>`
+  }
+  return ''
+}
+
+const getPlainTextBetween = (from, to) => {
+  if (!editor?.value) return ''
+  return editor.value.state.doc.textBetween(
+    from,
+    to,
+    '\n',
+    '\n',
+    (node) => mapLeafNodeToText(node)
+  )
+}
 
 const serialize = (value = '') => {
+  const normalizeDuration = (duration) => {
+    const num = Number(duration)
+    if (!Number.isFinite(num) || num < 0) {
+      return DEFAULT_PAUSE_DURATION
+    }
+    return num.toFixed(1)
+  }
+
   if (!value) {
     return '<p></p>'
   }
+  // TipTap 编辑器需要 <p> 标签作为段落节点，这是必需的
+  // 问题不在于添加 <p> 标签，而在于 deserialize 需要正确处理嵌套的 <p> 标签
   const paragraphs = value.split('\n').map((line) => {
     if (!line) return '<p><br /></p>'
     const htmlLine = line
-      .replace(PAUSE_PLACEHOLDER_REGEX, '<span data-pause="true"></span>')
+      .replace(PAUSE_TOKEN_REGEX, (_, duration = DEFAULT_PAUSE_DURATION) => {
+        const safeDuration = normalizeDuration(duration || DEFAULT_PAUSE_DURATION)
+        return `<span data-pause="${safeDuration}"></span>`
+      })
       .replace(SILENCE_PLACEHOLDER_REGEX, (_, duration = '0') => {
         const safeDuration = duration || '0'
         return `<span data-silence="${safeDuration}"></span>`
@@ -84,19 +129,99 @@ const serialize = (value = '') => {
 
 const deserialize = (html) => {
   if (!html) return ''
+  
+  // 添加日志（仅用于调试第一句）
+  const isFirstSentence = html.includes('11月17日') || html.includes('中央')
+  if (isFirstSentence) {
+    console.log('[deserialize] 输入 HTML 长度:', html.length, '内容:', html)
+  }
+  
   const tmp = document.createElement('div')
   tmp.innerHTML = html
-  const paragraphs = Array.from(tmp.querySelectorAll('p')).map((p) =>
-    p.innerHTML
-      .replace(/<span[^>]*data-pause="true"[^>]*><\/span>/g, PAUSE_PLACEHOLDER)
-      .replace(/<span[^>]*data-silence="([^"]*)"[^>]*><\/span>/g, (_, duration = '0') => {
-        const safeDuration = duration || '0'
-        return `<silence:${safeDuration}>`
-      })
-      .replace(/<br\s*\/?>/g, '')
-      .replace(/&nbsp;/g, ' ')
-  )
-  return paragraphs.join('\n').trim()
+  
+  if (isFirstSentence) {
+    console.log('[deserialize] 原始 HTML:', tmp.innerHTML)
+  }
+  
+  // 先移除所有 <p> 标签，但保留其内容
+  // 因为原始内容不应该有 <p> 标签，这些是 TipTap 自动添加的
+  // 先移除 <p> 可以简化 HTML 结构，避免后续处理嵌套的复杂情况
+  tmp.querySelectorAll('p').forEach((p) => {
+    const parent = p.parentNode
+    if (!parent) return
+    
+    // 将 <p> 标签内的所有内容移到父节点
+    const fragment = document.createDocumentFragment()
+    while (p.firstChild) {
+      fragment.appendChild(p.firstChild)
+    }
+    // 在 <p> 标签位置插入内容
+    parent.insertBefore(fragment, p)
+    parent.removeChild(p)
+  })
+  
+  if (isFirstSentence) {
+    console.log('[deserialize] 移除 <p> 标签后的 HTML:', tmp.innerHTML)
+  }
+  
+  // 再移除语速标签，但保留其内容
+  // 现在 HTML 结构已经简化，不需要处理嵌套的 <p> 标签
+  const removeSpeedSpans = (container) => {
+    const speedSpans = container.querySelectorAll('[data-speed-span]')
+    speedSpans.forEach((node) => {
+      const parent = node.parentNode
+      if (!parent) return
+      
+      // 将节点内的所有子节点移到父节点
+      const fragment = document.createDocumentFragment()
+      while (node.firstChild) {
+        fragment.appendChild(node.firstChild)
+      }
+      parent.insertBefore(fragment, node)
+      parent.removeChild(node)
+    })
+  }
+  
+  // 递归移除所有语速标签
+  removeSpeedSpans(tmp)
+  
+  if (isFirstSentence) {
+    console.log('[deserialize] 移除语速标签后的 HTML:', tmp.innerHTML)
+  }
+  
+  // 处理停顿和静音标记，将它们转换为文本标记
+  tmp.querySelectorAll('[data-pause]').forEach((node) => {
+    const duration = node.getAttribute('data-pause') || DEFAULT_PAUSE_DURATION
+    const marker = document.createTextNode(`<pause:${duration}>`)
+    node.parentNode?.replaceChild(marker, node)
+  })
+  
+  tmp.querySelectorAll('[data-silence]').forEach((node) => {
+    const duration = node.getAttribute('data-silence') || '0'
+    const marker = document.createTextNode(`<silence:${duration}>`)
+    node.parentNode?.replaceChild(marker, node)
+  })
+  
+  // 直接使用 textContent 提取所有文本内容
+  // 这样可以获取所有文本，包括不在 <p> 标签内的文本节点
+  let textContent = tmp.textContent || tmp.innerText || ''
+  
+  // 将 &nbsp; 转换为空格
+  textContent = textContent.replace(/&nbsp;/g, ' ')
+  
+  // 恢复停顿和静音标记（如果它们被移除了）
+  textContent = textContent
+    .replace(/<pause:([\d.]+)>/g, '<pause:$1>')
+    .replace(/<silence:([\d.]+)>/g, '<silence:$1>')
+  
+  // 处理换行：将连续的空白字符（包括换行）规范化
+  // 但保留段落之间的换行（通过 <p> 标签分隔的内容）
+  const result = textContent.trim()
+  
+  if (isFirstSentence) {
+    console.log('[deserialize] 最终结果:', '长度:', result.length, '内容:', result)
+  }
+  return result
 }
 
 const editor = useEditor({
@@ -106,7 +231,8 @@ const editor = useEditor({
     }),
     PauseExtension,
     SilenceExtension,
-    PolyphonicMarkersExtension
+    PolyphonicMarkersExtension,
+    SpeedSpanExtension
   ],
   autofocus: props.autofocus,
   content: serialize(props.modelValue),
@@ -115,11 +241,27 @@ const editor = useEditor({
     const asString = deserialize(html)
     emit('update:modelValue', asString)
     emit('contentChange', asString)
+    if (!isSyncingSpeedSegments) {
+      const segments = collectSpeedSegments()
+      emit('speedSegmentsChange', segments)
+      lastAppliedSpeedSegments.value = JSON.stringify(normalizeSpeedSegments(segments))
+    }
   },
   onSelectionUpdate({ editor }) {
-    const { from } = editor.state.selection
-    const text = editor.state.doc.textBetween(0, from)
-    emit('selectionChange', { hasTextBefore: text.length > 0 })
+    const { from, to } = editor.state.selection
+    const before = getPlainTextBetween(0, from)
+    const selected = getPlainTextBetween(from, to)
+    emit('selectionChange', {
+      hasTextBefore: before.length > 0,
+      hasSelection: to > from && selected.length > 0,
+      selectionRange: {
+        docFrom: from,
+        docTo: to,
+        plainFrom: before.length,
+        plainTo: before.length + selected.length,
+        length: selected.length
+      }
+    })
   },
   onFocus() {
     emit('focus')
@@ -214,6 +356,91 @@ const schedulePolyphonicUpdate = () => {
   })
 }
 
+const clampLocalSpeed = (value) => {
+  const num = Number(value)
+  if (Number.isNaN(num)) return 0
+  if (num > 10) return 10
+  if (num < -10) return -10
+  return Math.round(num)
+}
+
+const normalizeSpeedSegments = (segments = []) =>
+  (segments || [])
+    .filter(
+      (item) =>
+        typeof item === 'object' &&
+        typeof item.offset === 'number' &&
+        typeof item.length === 'number' &&
+        item.length > 0
+    )
+    .map((item, index) => ({
+      id: item.id || `speed-${index}-${Date.now()}`,
+      offset: Math.max(0, Math.floor(item.offset)),
+      length: Math.max(1, Math.floor(item.length)),
+      speed: clampLocalSpeed(item.speed)
+    }))
+
+const clearSpeedSpans = () => {
+  if (!editor?.value) return
+  const positions = []
+  editor.value.state.doc.descendants((node, pos) => {
+    if (node.type.name === SpeedSpanNodeName) {
+      positions.push(pos)
+    }
+  })
+  positions
+    .sort((a, b) => b - a)
+    .forEach((pos) => {
+      editor.value.commands.removeSpeedSpanAt(pos)
+    })
+}
+
+const applySpeedSegments = (segments = []) => {
+  if (!editor?.value) return
+  const normalized = normalizeSpeedSegments(segments)
+  const serialized = JSON.stringify(normalized)
+  if (serialized === lastAppliedSpeedSegments.value) {
+    return
+  }
+  isSyncingSpeedSegments = true
+  clearSpeedSpans()
+  normalized.forEach((segment) => {
+    const range = resolveDocRange({
+      offset: segment.offset,
+      length: segment.length
+    })
+    if (!range) return
+    editor.value
+      .chain()
+      .focus()
+      .setTextSelection({ from: range.from, to: range.to })
+      .wrapSpeedSpan({ speed: segment.speed, uid: segment.id })
+      .run()
+  })
+  isSyncingSpeedSegments = false
+  lastAppliedSpeedSegments.value = serialized
+}
+
+const collectSpeedSegments = () => {
+  if (!editor?.value) return []
+  const segments = []
+  editor.value.state.doc.descendants((node, pos) => {
+    if (node.type.name !== SpeedSpanNodeName) return true
+    const start = pos + 1
+    const end = pos + node.nodeSize - 1
+    const offset = getPlainTextBetween(0, start).length
+    const length = getPlainTextBetween(start, end).length
+    segments.push({
+      id: node.attrs?.uid || `speed-${offset}-${Date.now()}`,
+      offset,
+      length,
+      speed: clampLocalSpeed(node.attrs?.speed)
+    })
+    return false
+  })
+  return segments
+}
+
 watch(
   () => [props.modelValue, props.polyphonicMarkers, props.showPolyphonicHints],
   () => {
@@ -228,19 +455,29 @@ watch(
     if (instance) {
       schedulePolyphonicUpdate()
       attachDomEvents()
+      applySpeedSegments(props.speedSegments || [])
     } else {
       detachDomEvents()
     }
   }
 )
 
-const insertPause = () => {
+const insertPause = (duration = DEFAULT_PAUSE_DURATION) => {
   if (!editor?.value) return
   editor.value
     .chain()
     .focus()
     .insertContent({
-      type: PauseNodeName
+      type: PauseNodeName,
+      attrs: {
+        duration: (() => {
+          const num = Number(duration)
+          if (!Number.isFinite(num) || num < 0) {
+            return DEFAULT_PAUSE_DURATION
+          }
+          return num.toFixed(1)
+        })()
+      }
     })
     .run()
 }
@@ -256,6 +493,18 @@ const insertSilence = (duration = '0') => {
         duration: duration.toString()
       }
     })
+    .run()
+}
+
+const applyLocalSpeedRange = (from, to, speed, uid) => {
+  if (!editor?.value) return
+  if (typeof from !== 'number' || typeof to !== 'number') return
+  if (from >= to) return
+  editor.value
+    .chain()
+    .focus()
+    .setTextSelection({ from, to })
+    .wrapSpeedSpan({ speed: clampLocalSpeed(speed), uid })
     .run()
 }
 
@@ -323,7 +572,8 @@ const detachDomEvents = () => {
 defineExpose({
   insertPause,
   insertSilence,
-  focus: () => editor?.value?.commands.focus()
+  focus: () => editor?.value?.commands.focus(),
+  applyLocalSpeedRange
 })
 
 onBeforeUnmount(() => {
@@ -338,8 +588,20 @@ watch(
     const current = deserialize(editor.value.getHTML())
     if (current !== val) {
       editor.value.commands.setContent(serialize(val || ''))
+      nextTick(() => {
+        applySpeedSegments(props.speedSegments || [])
+      })
     }
   }
+)
+
+watch(
+  () => props.speedSegments,
+  (segments) => {
+    if (!editor?.value) return
+    applySpeedSegments(segments || [])
+  },
+  { deep: true }
 )
 </script>
 

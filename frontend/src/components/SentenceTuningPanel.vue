@@ -81,14 +81,19 @@ const props = defineProps({
   customOptions: { type: Array, default: () => [] },
   editingForm: { type: Object, required: true },
   customDisabled: { type: Object, default: () => ({}) },
-  activeActions: { type: Object, default: () => ({}) }
+  activeActions: { type: Object, default: () => ({}) },
+  selectionContext: {
+    type: Object,
+    default: null
+  }
 })
 
 const emit = defineEmits([
   'update:activeVoiceCategory',
   'select-voice',
   'custom-action',
-  'clear-text'
+  'clear-text',
+  'request-local-speed'
 ])
 
 const iconComponents = {
@@ -133,6 +138,14 @@ const isItemDisabled = (item) => {
 const handleCustomClick = (item) => {
   if (isItemDisabled(item)) return
   if (item.controlKey) {
+    if (
+      item.controlKey === 'speed' &&
+      props.selectionContext?.hasSelection &&
+      props.selectionContext?.selectionRange?.length > 0
+    ) {
+      emit('request-local-speed', props.selectionContext)
+      return
+    }
     activeCustom.value =
       activeCustom.value === item.controlKey ? '' : item.controlKey
   } else if (item.actionKey) {

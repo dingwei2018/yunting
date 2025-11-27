@@ -30,6 +30,7 @@ export const createSentenceParams = (data = {}) => ({
   volume: clampVolume(data.volume),
   speed: clampSpeed(data.speed),
   pitch: typeof data.pitch === 'number' ? data.pitch : 50,
+  speedSegments: Array.isArray(data.speedSegments) ? data.speedSegments : [],
   polyphonicOverrides: Array.isArray(data.polyphonicOverrides)
     ? data.polyphonicOverrides
     : [],
