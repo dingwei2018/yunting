@@ -31,6 +31,11 @@ RUN groupadd -r spring && useradd -r -g spring spring
 # 从构建阶段复制 JAR 文件
 COPY --from=builder /app/target/*.jar app.jar
 
+# 创建日志目录并设置权限
+RUN mkdir -p /app/logs && \
+    chown -R spring:spring /app/logs && \
+    chmod 755 /app/logs
+
 # 更改文件所有者
 RUN chown spring:spring app.jar
 
