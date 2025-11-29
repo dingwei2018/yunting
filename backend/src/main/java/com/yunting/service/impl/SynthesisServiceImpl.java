@@ -85,6 +85,9 @@ public class SynthesisServiceImpl implements SynthesisService {
     @Value("${file.storage.local.path:temp/audio}")
     private String localStoragePath;
 
+    @Value("${app.callback.url:}")
+    private String callbackUrl;
+
     public SynthesisServiceImpl(BreakingSentenceMapper breakingSentenceMapper,
                                 TaskMapper taskMapper,
                                 SynthesisSettingMapper synthesisSettingMapper,
@@ -153,11 +156,12 @@ public class SynthesisServiceImpl implements SynthesisService {
         CreateAsyncTtsJobRequestBody body = new CreateAsyncTtsJobRequestBody();
 
         //参数设置
-        body.withText(sentence.getContent())
+        body.withText(sentence.getSsml())
                 .withVoiceAssetId(voiceId)
                 .withSpeed(speechRate)
                 .withPitch(pitch)
-                .withVolume(volume);
+                .withVolume(volume)
+                .withCallbackConfig( new TtsCallBackConfig().withCallbackUrl(callbackUrl));
         request.withBody(body);
         try {
             CreateAsyncTtsJobResponse response = client.createAsyncTtsJob(request);

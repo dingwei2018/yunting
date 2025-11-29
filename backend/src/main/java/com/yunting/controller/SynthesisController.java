@@ -32,7 +32,7 @@ public class SynthesisController {
     @PostMapping("/breaking-sentences/synthesize")
     public ApiResponse<BreakingSentenceSynthesisResponseDTO> synthesize(
             @RequestParam("breaking_sentence_id") Long breakingSentenceId,
-            @RequestParam(value = "voice_id", required = false) String voiceId,
+            @RequestParam(value = "voice_id") String voiceId,
             @RequestParam(value = "speech_rate", required = false) Integer speechRate,
             @RequestParam(value = "volume", required = false) Integer volume,
             @RequestParam(value = "pitch", required = false) Integer pitch) {
