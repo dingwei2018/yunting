@@ -28,6 +28,14 @@ import com.huaweicloud.sdk.metastudio.v1.region.MetaStudioRegion;
 import com.huaweicloud.sdk.metastudio.v1.*;
 import com.huaweicloud.sdk.metastudio.v1.model.*;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.URL;
+import java.net.URLConnection;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -79,6 +87,9 @@ public class SynthesisServiceImpl implements SynthesisService {
 
     @Value("${huaweicloud.obs.prefix:audio/}")
     private String huaweiCloudObsPrefix;
+
+    @Value("${file.storage.local.path:temp/audio}")
+    private String localStoragePath;
 
     public SynthesisServiceImpl(BreakingSentenceMapper breakingSentenceMapper,
                                 TaskMapper taskMapper,
@@ -391,19 +402,41 @@ public class SynthesisServiceImpl implements SynthesisService {
             return;
         }
 
+        File localFile = null;
         try {
-            // 1. 生成OBS对象键
-            String fileName = "breaking_" + breakingSentenceId + "_" + System.currentTimeMillis() + ".mp3";
+            // 1. 生成本地文件路径
+            String fileName = "breaking_" + breakingSentenceId + "_" + System.currentTimeMillis() + ".wav";
+            Path localDir = Paths.get(localStoragePath);
+            
+            // 确保本地存储目录存在
+            if (!Files.exists(localDir)) {
+                Files.createDirectories(localDir);
+                logger.info("创建本地存储目录: {}", localDir.toAbsolutePath());
+            }
+            
+            localFile = localDir.resolve(fileName).toFile();
+
+            // 2. 从下载URL下载文件到本地
+            logger.info("开始从URL下载文件到本地，downloadUrl: {}, localFile: {}", 
+                    audioDownloadUrl, localFile.getAbsolutePath());
+            downloadFileToLocal(audioDownloadUrl, localFile);
+            logger.info("文件下载成功，本地文件: {}, 文件大小: {} bytes", 
+                    localFile.getAbsolutePath(), localFile.length());
+
+            // 3. 生成OBS对象键
             String objectKey = obsStorageService.buildObjectKey(fileName);
 
-            // 2. 从下载URL下载文件并上传到OBS
-            logger.info("开始下载并上传音频文件，downloadUrl: {}, objectKey: {}", audioDownloadUrl, objectKey);
-            String obsUrl = obsStorageService.uploadFromUrl(audioDownloadUrl, objectKey);
+            // 4. 从本地文件上传到OBS
+            logger.info("开始从本地文件上传到OBS，localFile: {}, objectKey: {}", 
+                    localFile.getAbsolutePath(), objectKey);
+            String obsUrl = obsStorageService.uploadFromFile(localFile, objectKey);
+            logger.info("文件上传到OBS成功，OBS URL: {}", obsUrl);
 
-            // 3. 转换音频时长（秒转毫秒）
-            Integer audioDuration = audioDurationSeconds != null ? audioDurationSeconds * 1000 : null;
+            // 5. 转换音频时长（秒转毫秒）
+            Integer audioDuration = audioDurationSeconds != null ? 
+                    audioDurationSeconds * 1000 : null;
 
-            // 4. 更新数据库
+            // 6. 更新数据库
             breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 2, obsUrl, audioDuration);
             logger.info("TTS任务完成，已更新数据库，breakingSentenceId: {}, audioUrl: {}, duration: {}ms", 
                     breakingSentenceId, obsUrl, audioDuration);
@@ -412,6 +445,55 @@ public class SynthesisServiceImpl implements SynthesisService {
             logger.error("处理完成回调异常，breakingSentenceId: {}", breakingSentenceId, e);
             breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
             throw new BusinessException(10500, "处理音频文件失败: " + e.getMessage());
+        } finally {
+            // 7. 清理临时文件
+            if (localFile != null && localFile.exists()) {
+                try {
+                    boolean deleted = localFile.delete();
+                    if (deleted) {
+                        logger.info("已删除临时文件: {}", localFile.getAbsolutePath());
+                    } else {
+                        logger.warn("删除临时文件失败: {}", localFile.getAbsolutePath());
+                    }
+                } catch (Exception e) {
+                    logger.warn("删除临时文件时发生异常: {}", localFile.getAbsolutePath(), e);
+                }
+            }
+        }
+    }
+
+    /**
+     * 从URL下载文件到本地
+     * 
+     * @param downloadUrl 下载URL
+     * @param localFile 本地文件
+     */
+    private void downloadFileToLocal(String downloadUrl, File localFile) {
+        try {
+            URL url = new URL(downloadUrl);
+            URLConnection connection = url.openConnection();
+            connection.setConnectTimeout(30000); // 30秒连接超时
+            connection.setReadTimeout(300000); // 5分钟读取超时
+            
+            try (InputStream inputStream = connection.getInputStream();
+                 FileOutputStream outputStream = new FileOutputStream(localFile)) {
+                
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                long totalBytes = 0;
+                
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                    totalBytes += bytesRead;
+                }
+                
+                outputStream.flush();
+                logger.info("文件下载完成，总大小: {} bytes", totalBytes);
+            }
+        } catch (Exception e) {
+            logger.error("下载文件失败，URL: {}, localFile: {}", downloadUrl, 
+                    localFile.getAbsolutePath(), e);
+            throw new RuntimeException("下载文件失败: " + e.getMessage(), e);
         }
     }
 

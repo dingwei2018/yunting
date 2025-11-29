@@ -11,6 +11,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.net.URL;
 import java.net.URLConnection;
@@ -103,6 +105,42 @@ public class ObsStorageService {
             }
         } catch (Exception e) {
             logger.error("上传文件到OBS失败，downloadUrl: {}, objectKey: {}", downloadUrl, objectKey, e);
+            throw new RuntimeException("上传文件到OBS失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 从本地文件上传到OBS
+     * 
+     * @param localFile 本地文件
+     * @param objectKey OBS对象键（文件路径）
+     * @return OBS访问URL
+     */
+    public String uploadFromFile(File localFile, String objectKey) {
+        if (!StringUtils.hasText(bucketName)) {
+            throw new IllegalStateException("未配置 huaweicloud.obs.bucket，无法上传文件");
+        }
+        
+        if (localFile == null || !localFile.exists() || !localFile.isFile()) {
+            throw new IllegalArgumentException("本地文件不存在或不是有效文件: " + 
+                    (localFile != null ? localFile.getAbsolutePath() : "null"));
+        }
+        
+        try {
+            logger.info("开始从本地文件上传到OBS，localFile: {}, bucket: {}, objectKey: {}", 
+                    localFile.getAbsolutePath(), bucketName, objectKey);
+            
+            try (FileInputStream fileInputStream = new FileInputStream(localFile)) {
+                PutObjectRequest putRequest = new PutObjectRequest(bucketName, objectKey, fileInputStream);
+                PutObjectResult result = obsClient.putObject(putRequest);
+                
+                String obsUrl = generateObsUrl(objectKey);
+                logger.info("文件上传成功，OBS URL: {}", obsUrl);
+                return obsUrl;
+            }
+        } catch (Exception e) {
+            logger.error("上传文件到OBS失败，localFile: {}, objectKey: {}", 
+                    localFile.getAbsolutePath(), objectKey, e);
             throw new RuntimeException("上传文件到OBS失败: " + e.getMessage(), e);
         }
     }
