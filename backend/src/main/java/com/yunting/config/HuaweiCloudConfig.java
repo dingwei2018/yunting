@@ -24,6 +24,9 @@ public class HuaweiCloudConfig {
     @Value("${huaweicloud.project-id:}")
     private String projectId;
 
+    @Value("${app.callback.url:}")
+    private String callbackUrl;
+
     /**
      * 创建华为云认证凭证
      * 可通过环境变量 HUAWEICLOUD_SDK_AK 和 HUAWEICLOUD_SDK_SK 配置
@@ -46,6 +49,16 @@ public class HuaweiCloudConfig {
      */
     public String getRegion() {
         return region;
+    }
+
+    /**
+     * 获取回调URL配置
+     * 用于华为云TTS异步任务的回调通知
+     * 
+     * @return 回调URL，如果未配置则返回null
+     */
+    public String getCallbackUrl() {
+        return callbackUrl != null && !callbackUrl.isEmpty() ? callbackUrl : null;
     }
 }
 

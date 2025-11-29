@@ -1,50 +1,77 @@
 version: '3.8'
 
 services:
+  # MySQL 数据库服务
   mysql:
-    image: mysql:8.0.36
+    image: mysql:8.0
     container_name: yunting-mysql
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     restart: unless-stopped
     environment:
-      - MYSQL_ROOT_PASSWORD=secret
-      - MYSQL_DATABASE=yunting
-      - MYSQL_USER=yunting
-      - MYSQL_PASSWORD=yunting
-      - TZ=Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: yunting
+      MYSQL_USER: yunting
+      MYSQL_PASSWORD: yunting
+      TZ: Asia/Shanghai
     ports:
       - "3306:3306"
     volumes:
-      - mysql-data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
+      - ./src/main/resources/db:/docker-entrypoint-initdb.d:ro
+    command: 
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+8:00
     networks:
       - yunting-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-psecret"]
+      interval: 10s
+      timeout: 5s
       retries: 5
-      start_period: 40s
 
+  # 后端应用服务
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: yunting-backend
+    restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - TZ=Asia/Shanghai
-      - LOG_HOME=/app/logs
-      - SPRING_DATASOURCE_URL=jdbc:mysql://yunting-mysql:3306/yunting?characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
-      - SPRING_DATASOURCE_USERNAME=yunting
-      - SPRING_DATASOURCE_PASSWORD=yunting
+      # 数据库配置
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/yunting?characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: yunting
+      SPRING_DATASOURCE_PASSWORD: yunting
+      
+      # 日志配置
+      LOG_HOME: /app/logs
+      
+      # 华为云 SDK 配置（根据实际情况修改）
+      HUAWEICLOUD_SDK_AK: ${HUAWEICLOUD_SDK_AK:-HPUALDRLSKCBQCNAF0GN}
+      HUAWEICLOUD_SDK_SK: ${HUAWEICLOUD_SDK_SK:-qR5ckRAhYXBenKk13YB0ZTYIZ0C48Eh5YtdgGRcF}
+      HUAWEICLOUD_SDK_REGION: ${HUAWEICLOUD_SDK_REGION:-cn-north-4}
+      HUAWEICLOUD_SDK_PROJECT_ID: ${HUAWEICLOUD_SDK_PROJECT_ID:-802c7a2a349347e1807438789c839bb7}
+      
+      # 华为云 OBS 配置（根据实际情况修改）
+      HUAWEICLOUD_OBS_ENDPOINT: ${HUAWEICLOUD_OBS_ENDPOINT:-https://obs.cn-north-4.myhuaweicloud.com}
+      HUAWEICLOUD_OBS_BUCKET: ${HUAWEICLOUD_OBS_BUCKET:-yunting-9bcc}
+      HUAWEICLOUD_OBS_PREFIX: ${HUAWEICLOUD_OBS_PREFIX:-audio/}
+      
+      # 应用回调URL配置（根据实际情况修改）
+      APP_CALLBACK_URL: ${APP_CALLBACK_URL:-http://123.60.64.142:8080/api/synthesis/callback}
+      
+      # 本地文件存储配置
+      FILE_STORAGE_LOCAL_PATH: /app/temp/audio
+      
+      # 时区
+      TZ: Asia/Shanghai
     volumes:
-      - ./logs:/app/logs
-    restart: unless-stopped
+      - backend_logs:/app/logs
+      - backend_temp:/app/temp
     networks:
       - yunting-network
     healthcheck:
@@ -52,12 +79,16 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+
+volumes:
+  mysql_data:
+    driver: local
+  backend_logs:
+    driver: local
+  backend_temp:
+    driver: local
 
 networks:
   yunting-network:
     driver: bridge
-
-volumes:
-  mysql-data:
-
