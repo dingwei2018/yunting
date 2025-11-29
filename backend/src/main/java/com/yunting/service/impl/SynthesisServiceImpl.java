@@ -28,16 +28,20 @@ import com.huaweicloud.sdk.metastudio.v1.region.MetaStudioRegion;
 import com.huaweicloud.sdk.metastudio.v1.*;
 import com.huaweicloud.sdk.metastudio.v1.model.*;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+import com.yunting.dto.synthesis.TtsCallbackRequest;
+import com.yunting.service.ObsStorageService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class SynthesisServiceImpl implements SynthesisService {
 
+    private static final Logger logger = LoggerFactory.getLogger(SynthesisServiceImpl.class);
+    
     private static final String STATUS_PENDING = "pending";
     private static final String STATUS_PROCESSING = "processing";
     private static final String STATUS_COMPLETED = "completed";
@@ -45,6 +49,11 @@ public class SynthesisServiceImpl implements SynthesisService {
     private final BreakingSentenceMapper breakingSentenceMapper;
     private final TaskMapper taskMapper;
     private final SynthesisSettingMapper synthesisSettingMapper;
+    private final ObsStorageService obsStorageService;
+
+    // 存储job_id和breaking_sentence_id的映射关系
+    // key: job_id, value: breaking_sentence_id
+    private final Map<String, Long> jobIdMapping = new ConcurrentHashMap<>();
 
     // 从 application.properties 注入配置参数
     // 使用 @Value 注解，格式：${配置键名:默认值}
@@ -73,10 +82,12 @@ public class SynthesisServiceImpl implements SynthesisService {
 
     public SynthesisServiceImpl(BreakingSentenceMapper breakingSentenceMapper,
                                 TaskMapper taskMapper,
-                                SynthesisSettingMapper synthesisSettingMapper) {
+                                SynthesisSettingMapper synthesisSettingMapper,
+                                ObsStorageService obsStorageService) {
         this.breakingSentenceMapper = breakingSentenceMapper;
         this.taskMapper = taskMapper;
         this.synthesisSettingMapper = synthesisSettingMapper;
+        this.obsStorageService = obsStorageService;
     }
 
     @Override
@@ -145,22 +156,43 @@ public class SynthesisServiceImpl implements SynthesisService {
         request.withBody(body);
         try {
             CreateAsyncTtsJobResponse response = client.createAsyncTtsJob(request);
-            System.out.println(response.toString());
+            String jobId = response.getJobId();
+            
+            if (StringUtils.hasText(jobId)) {
+                // 保存job_id和breaking_sentence_id的映射关系
+                jobIdMapping.put(jobId, breakingSentenceId);
+                logger.info("创建TTS任务成功，jobId: {}, breakingSentenceId: {}", jobId, breakingSentenceId);
+                
+                // 更新状态为合成中
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 1, null, null);
+            } else {
+                logger.warn("创建TTS任务失败：未返回jobId");
+                throw new BusinessException(10500, "创建TTS任务失败：未返回jobId");
+            }
         } catch (ConnectionException e) {
-            e.printStackTrace();
+            logger.error("创建TTS任务连接异常", e);
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            throw new BusinessException(10500, "创建TTS任务连接异常: " + e.getMessage());
         } catch (RequestTimeoutException e) {
-            e.printStackTrace();
+            logger.error("创建TTS任务请求超时", e);
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            throw new BusinessException(10500, "创建TTS任务请求超时: " + e.getMessage());
         } catch (ServiceResponseException e) {
-            e.printStackTrace();
-            System.out.println(e.getHttpStatusCode());
-            System.out.println(e.getRequestId());
-            System.out.println(e.getErrorCode());
-            System.out.println(e.getErrorMsg());
+            logger.error("创建TTS任务服务响应异常: HTTP状态码={}, 错误码={}, 错误信息={}, 请求ID={}",
+                    e.getHttpStatusCode(), e.getErrorCode(), e.getErrorMsg(), e.getRequestId());
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            throw new BusinessException(10500, "创建TTS任务失败: " + e.getErrorMsg());
+        } catch (BusinessException e) {
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            throw e;
+        } catch (Exception e) {
+            logger.error("创建TTS任务异常", e);
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            throw new BusinessException(10500, "创建TTS任务异常: " + e.getMessage());
         }
 
-        // 7. 更新断句的合成信息到数据库
-        //    状态值2表示已合成，同时保存音频URL和音频时长
-        breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 2, audioUrl, audioDuration);
+        // 注意：此时任务已提交，等待回调通知
+        // 不再直接更新为已完成状态，而是等待回调处理
 
         // 8. 构建并返回响应对象
         BreakingSentenceSynthesisResponseDTO responseDTO = new BreakingSentenceSynthesisResponseDTO();
@@ -300,6 +332,96 @@ public class SynthesisServiceImpl implements SynthesisService {
 
     private String buildAudioUrl(Long breakingSentenceId) {
         return "https://example.com/audio/breaking_" + breakingSentenceId + ".mp3";
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void handleTtsCallback(TtsCallbackRequest callbackRequest) {
+        String jobId = callbackRequest.getJobId();
+        String status = callbackRequest.getStatus();
+        
+        if (!StringUtils.hasText(jobId)) {
+            logger.warn("回调请求中job_id为空，忽略处理");
+            return;
+        }
+
+        // 根据job_id查找对应的breaking_sentence_id
+        Long breakingSentenceId = jobIdMapping.get(jobId);
+        if (breakingSentenceId == null) {
+            logger.warn("未找到job_id对应的断句ID，jobId: {}", jobId);
+            return;
+        }
+
+        logger.info("处理TTS回调，jobId: {}, status: {}, breakingSentenceId: {}", jobId, status, breakingSentenceId);
+
+        try {
+            if ("FINISHED".equals(status)) {
+                // 任务完成，处理音频文件
+                handleFinishedCallback(callbackRequest, breakingSentenceId);
+            } else if ("ERROR".equals(status)) {
+                // 任务失败
+                handleErrorCallback(callbackRequest, breakingSentenceId);
+            } else if ("WAITING".equals(status)) {
+                // 任务等待中，不需要处理
+                logger.info("TTS任务等待中，jobId: {}", jobId);
+            } else {
+                logger.warn("未知的任务状态: {}, jobId: {}", status, jobId);
+            }
+        } catch (Exception e) {
+            logger.error("处理TTS回调异常，jobId: {}, breakingSentenceId: {}", jobId, breakingSentenceId, e);
+            // 更新状态为失败
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+        } finally {
+            // 处理完成后，可以选择保留映射关系（用于查询）或删除
+            // 这里保留映射关系，以便后续查询
+        }
+    }
+
+    /**
+     * 处理任务完成的回调
+     */
+    private void handleFinishedCallback(TtsCallbackRequest callbackRequest, Long breakingSentenceId) {
+        String audioDownloadUrl = callbackRequest.getAudioFileDownloadUrl();
+        Integer audioDurationSeconds = callbackRequest.getAudioDuration();
+
+        if (!StringUtils.hasText(audioDownloadUrl)) {
+            logger.warn("音频下载URL为空，jobId: {}, breakingSentenceId: {}", 
+                    callbackRequest.getJobId(), breakingSentenceId);
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            return;
+        }
+
+        try {
+            // 1. 生成OBS对象键
+            String fileName = "breaking_" + breakingSentenceId + "_" + System.currentTimeMillis() + ".mp3";
+            String objectKey = obsStorageService.buildObjectKey(fileName);
+
+            // 2. 从下载URL下载文件并上传到OBS
+            logger.info("开始下载并上传音频文件，downloadUrl: {}, objectKey: {}", audioDownloadUrl, objectKey);
+            String obsUrl = obsStorageService.uploadFromUrl(audioDownloadUrl, objectKey);
+
+            // 3. 转换音频时长（秒转毫秒）
+            Integer audioDuration = audioDurationSeconds != null ? audioDurationSeconds * 1000 : null;
+
+            // 4. 更新数据库
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 2, obsUrl, audioDuration);
+            logger.info("TTS任务完成，已更新数据库，breakingSentenceId: {}, audioUrl: {}, duration: {}ms", 
+                    breakingSentenceId, obsUrl, audioDuration);
+
+        } catch (Exception e) {
+            logger.error("处理完成回调异常，breakingSentenceId: {}", breakingSentenceId, e);
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            throw new BusinessException(10500, "处理音频文件失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 处理任务失败的回调
+     */
+    private void handleErrorCallback(TtsCallbackRequest callbackRequest, Long breakingSentenceId) {
+        logger.error("TTS任务失败，jobId: {}, breakingSentenceId: {}", 
+                callbackRequest.getJobId(), breakingSentenceId);
+        breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
     }
 }
 

@@ -23,6 +23,13 @@ public interface SynthesisService {
                                                   List<Long> breakingSentenceIds);
 
     TaskSynthesisStatusDTO getTaskSynthesisStatus(Long taskId);
+
+    /**
+     * 处理华为云TTS回调
+     * 
+     * @param callbackRequest 回调请求
+     */
+    void handleTtsCallback(com.yunting.dto.synthesis.TtsCallbackRequest callbackRequest);
 }
 
 

@@ -5,10 +5,12 @@ import com.yunting.common.ResponseUtil;
 import com.yunting.dto.synthesis.BreakingSentenceSynthesisResponseDTO;
 import com.yunting.dto.synthesis.TaskSynthesisBatchResponseDTO;
 import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
+import com.yunting.dto.synthesis.TtsCallbackRequest;
 import com.yunting.service.SynthesisService;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -68,6 +70,23 @@ public class SynthesisController {
     public ApiResponse<TaskSynthesisStatusDTO> getSynthesisStatus(@RequestParam("taskid") Long taskId) {
         TaskSynthesisStatusDTO dto = synthesisService.getTaskSynthesisStatus(taskId);
         return ResponseUtil.success(dto);
+    }
+
+    /**
+     * 华为云TTS回调接口
+     * 接收华为云TTS异步任务的回调通知
+     * 
+     * @param callbackRequest 回调请求体，包含任务状态、job_id、音频下载URL等信息
+     * @return 处理结果
+     */
+    @PostMapping("/synthesis/callback")
+    public ApiResponse<String> handleTtsCallback(@RequestBody TtsCallbackRequest callbackRequest) {
+        try {
+            synthesisService.handleTtsCallback(callbackRequest);
+            return ResponseUtil.success("回调处理成功");
+        } catch (Exception e) {
+            return ResponseUtil.error(10500, "回调处理失败: " + e.getMessage());
+        }
     }
 
     private List<Long> parseIds(String ids) {
