@@ -15,7 +15,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/breaking-sentences")
 public class BreakingSentenceController {
 
     private final BreakingSentenceService breakingSentenceService;
@@ -36,7 +35,7 @@ public class BreakingSentenceController {
         this.objectMapper = objectMapper;
     }
 
-    @GetMapping("/tasks/breaking-sentences")
+    @GetMapping("/getBreakingSentenceList")
     public ApiResponse<BreakingSentenceListResponseDTO> getBreakingSentenceList(
             @RequestParam("taskid") Long taskId,
             @RequestParam(value = "page", required = false) Integer page,
@@ -45,32 +44,41 @@ public class BreakingSentenceController {
         return ResponseUtil.success(data);
     }
 
-    @GetMapping("/breaking-sentences/info")
+    @GetMapping("/getBreakingSentenceDetail")
     public ApiResponse<BreakingSentenceDetailDTO> getBreakingSentenceDetail(
             @RequestParam("breaking_sentence_id") Long breakingSentenceId) {
         BreakingSentenceDetailDTO detail = breakingSentenceService.getBreakingSentenceDetail(breakingSentenceId);
         return ResponseUtil.success(detail);
     }
 
-    @DeleteMapping("/breaking-sentences")
+    @DeleteMapping("/deleteBreakingSentence")
     public ApiResponse<Map<String, Long>> deleteBreakingSentence(
             @RequestParam("breaking_sentence_id") Long breakingSentenceId) {
         breakingSentenceService.deleteBreakingSentence(breakingSentenceId);
         return ResponseUtil.success(Map.of("breaking_sentence_id", breakingSentenceId));
     }
 
-    @PostMapping(value = "/breaking-sentences/settings", params = "taskid")
+    @PostMapping("/updateBreakingSentenceSettings")
     public ApiResponse<Map<String, Integer>> updateBreakingSentenceSettings(
             @RequestParam("taskid") Long taskId,
-            @RequestBody BreakingSentenceBatchSettingsRequest request) {
-        int updated = breakingSentenceService.updateBreakingSentenceParams(taskId,
-                request != null ? request.getBreakingSentences() : null);
+            @RequestParam(value = "breaking_sentences", required = false) String breakingSentencesJson) {
+        List<BreakingSentenceParamRequest> breakingSentences = null;
+        if (StringUtils.hasText(breakingSentencesJson)) {
+            try {
+                BreakingSentenceBatchSettingsRequest request = objectMapper.readValue(breakingSentencesJson,
+                        BreakingSentenceBatchSettingsRequest.class);
+                breakingSentences = request != null ? request.getBreakingSentences() : null;
+            } catch (Exception e) {
+                throw new BusinessException(10400, "参数解析失败: " + e.getMessage());
+            }
+        }
+        int updated = breakingSentenceService.updateBreakingSentenceParams(taskId, breakingSentences);
         return ResponseUtil.success(Map.of("updated_count", updated));
     }
 
-    @PostMapping(value = "/breaking-sentences/settings", params = "breaking_sentence_id")
+    @PostMapping("/updateSingleBreakingSentenceSetting")
     public ApiResponse<Map<String, Long>> updateSingleBreakingSentenceSetting(
-            @RequestParam("breaking_sentence_id") Long breakingSentenceId,
+            @RequestParam(value = "breaking_sentence_id") Long breakingSentenceId,
             @RequestParam(value = "content", required = false) String content,
             @RequestParam(value = "speech_rate", required = false) Integer speechRate,
             @RequestParam(value = "volume", required = false) Integer volume,
