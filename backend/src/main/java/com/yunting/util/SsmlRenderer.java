@@ -37,6 +37,7 @@ public final class SsmlRenderer {
 
     /**
      * 生成完整的 SSML（支持所有标签）
+     * 只使用 request 中实际传递的参数，未传递的参数不生成标签
      */
     public static String renderFull(String content,
                                     SynthesisSetting setting,
@@ -45,11 +46,22 @@ public final class SsmlRenderer {
             return null;
         }
 
-        // 获取基础参数
-        String voiceId = setting != null && StringUtils.hasText(setting.getVoiceId()) ? setting.getVoiceId() : "default";
-        int speechRate = setting != null ? setting.getSpeechRate() : 0;
-        int volume = setting != null ? setting.getVolume() : 0;
-        int pitch = setting != null ? setting.getPitch() : 0;
+        // 获取基础参数：只使用 request 中实际传递的参数
+        // 如果 request 中没有传递，则不使用（不生成对应的标签属性）
+        String voiceId = null;
+        Integer speechRate = null;
+        Integer volume = null;
+        Integer pitch = null;
+        
+        if (request != null) {
+            // 只使用 request 中实际传递的参数
+            voiceId = request.getVoiceId();
+            speechRate = request.getSpeechRate();
+            volume = request.getVolume();
+            pitch = request.getPitch();
+        }
+        
+        // 不再设置默认值，如果 request 中没有传递 voiceId，就不生成 voice 标签
 
         // 构建标记列表（按位置排序）
         List<Mark> marks = new ArrayList<>();
@@ -123,9 +135,33 @@ public final class SsmlRenderer {
         // 构建 SSML
         StringBuilder ssml = new StringBuilder();
         ssml.append("<speak>");
-        ssml.append("<voice name=\"").append(escape(voiceId)).append("\">");
-        ssml.append("<prosody rate=\"").append(speechRate).append("%\" volume=\"")
-                .append(volume).append("dB\" pitch=\"").append(pitch).append("%\">");
+        
+        // 只有当传递了 voiceId 时才生成 voice 标签
+        if (voiceId != null && StringUtils.hasText(voiceId)) {
+            ssml.append("<voice name=\"").append(escape(voiceId)).append("\">");
+        }
+        
+        // 只生成传递了参数的 prosody 属性
+        boolean hasProsodyAttr = false;
+        StringBuilder prosodyAttrs = new StringBuilder();
+        
+        if (speechRate != null) {
+            prosodyAttrs.append(" rate=\"").append(speechRate).append("%\"");
+            hasProsodyAttr = true;
+        }
+        if (volume != null) {
+            prosodyAttrs.append(" volume=\"").append(volume).append("dB\"");
+            hasProsodyAttr = true;
+        }
+        if (pitch != null) {
+            prosodyAttrs.append(" pitch=\"").append(pitch).append("%\"");
+            hasProsodyAttr = true;
+        }
+        
+        // 只有当至少有一个 prosody 属性时才生成 prosody 标签
+        if (hasProsodyAttr) {
+            ssml.append("<prosody").append(prosodyAttrs).append(">");
+        }
 
         // 处理文本和标记
         int currentPos = 0;
@@ -183,8 +219,16 @@ public final class SsmlRenderer {
             ssml.append(escape(remainingText));
         }
 
-        ssml.append("</prosody>");
-        ssml.append("</voice>");
+        // 只有当生成了 prosody 标签时才关闭它
+        if (hasProsodyAttr) {
+            ssml.append("</prosody>");
+        }
+        
+        // 只有当生成了 voice 标签时才关闭它
+        if (voiceId != null && StringUtils.hasText(voiceId)) {
+            ssml.append("</voice>");
+        }
+        
         ssml.append("</speak>");
 
         return ssml.toString();
