@@ -11,6 +11,11 @@ public class BreakingSentenceParamRequest {
     private String voiceId;
     private List<PauseSettingRequest> pauses;
     private List<PolyphonicSettingRequest> polyphonic;
+    private List<SayAsSettingRequest> sayAs;  // say-as 标签设置
+    private List<SubSettingRequest> sub;  // sub 标签设置
+    private List<WordSettingRequest> word;  // word 标签设置
+    private List<EmotionSettingRequest> emotion;  // emotion 标签设置
+    private List<InsertActionSettingRequest> insertAction;  // insert-action 标签设置
     private List<Long> readingRuleIds;
 
     public Long getBreakingSentenceId() {
@@ -75,6 +80,46 @@ public class BreakingSentenceParamRequest {
 
     public void setPolyphonic(List<PolyphonicSettingRequest> polyphonic) {
         this.polyphonic = polyphonic;
+    }
+
+    public List<SayAsSettingRequest> getSayAs() {
+        return sayAs;
+    }
+
+    public void setSayAs(List<SayAsSettingRequest> sayAs) {
+        this.sayAs = sayAs;
+    }
+
+    public List<SubSettingRequest> getSub() {
+        return sub;
+    }
+
+    public void setSub(List<SubSettingRequest> sub) {
+        this.sub = sub;
+    }
+
+    public List<WordSettingRequest> getWord() {
+        return word;
+    }
+
+    public void setWord(List<WordSettingRequest> word) {
+        this.word = word;
+    }
+
+    public List<EmotionSettingRequest> getEmotion() {
+        return emotion;
+    }
+
+    public void setEmotion(List<EmotionSettingRequest> emotion) {
+        this.emotion = emotion;
+    }
+
+    public List<InsertActionSettingRequest> getInsertAction() {
+        return insertAction;
+    }
+
+    public void setInsertAction(List<InsertActionSettingRequest> insertAction) {
+        this.insertAction = insertAction;
     }
 
     public List<Long> getReadingRuleIds() {

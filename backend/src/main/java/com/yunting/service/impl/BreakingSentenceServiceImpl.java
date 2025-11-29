@@ -7,8 +7,6 @@ import com.yunting.dto.breaking.BreakingSentenceSettingsDTO;
 import com.yunting.dto.breaking.PauseDTO;
 import com.yunting.dto.breaking.PolyphonicSettingDTO;
 import com.yunting.dto.breaking.request.BreakingSentenceParamRequest;
-import com.yunting.dto.breaking.request.PauseSettingRequest;
-import com.yunting.dto.breaking.request.PolyphonicSettingRequest;
 import com.yunting.exception.BusinessException;
 import com.yunting.mapper.BreakingSentenceMapper;
 import com.yunting.mapper.PauseSettingMapper;
@@ -327,9 +325,21 @@ public class BreakingSentenceServiceImpl implements BreakingSentenceService {
             }
         }
 
-        if (contentUpdated || request.getPauses() != null || request.getPolyphonic() != null) {
+        // 检查是否需要更新 SSML
+        boolean needUpdateSsml = contentUpdated || 
+                request.getPauses() != null || 
+                request.getPolyphonic() != null ||
+                request.getSayAs() != null ||
+                request.getSub() != null ||
+                request.getWord() != null ||
+                request.getEmotion() != null ||
+                request.getInsertAction() != null ||
+                hasSettingUpdate;
+
+        if (needUpdateSsml) {
             SynthesisSetting setting = synthesisSettingMapper.selectByBreakingSentenceId(sentence.getBreakingSentenceId());
-            String ssml = SsmlRenderer.render(sentence.getContent(), setting);
+            // 使用完整的 SSML 渲染方法，支持所有标签
+            String ssml = SsmlRenderer.renderFull(sentence.getContent(), setting, request);
             breakingSentenceMapper.updateSsml(sentence.getBreakingSentenceId(), ssml);
         }
     }
