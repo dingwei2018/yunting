@@ -13,6 +13,7 @@ public class BreakingSentence {
     private String audioUrl;
     private Integer audioDuration;
     private String ssml;
+    private String jobId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -94,6 +95,14 @@ public class BreakingSentence {
 
     public void setSsml(String ssml) {
         this.ssml = ssml;
+    }
+
+    public String getJobId() {
+        return jobId;
+    }
+
+    public void setJobId(String jobId) {
+        this.jobId = jobId;
     }
 
     public LocalDateTime getCreatedAt() {

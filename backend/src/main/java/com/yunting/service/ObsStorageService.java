@@ -147,25 +147,23 @@ public class ObsStorageService {
 
     /**
      * 生成OBS访问URL
+     * 格式：https://{bucket}.obs.{region}.myhuaweicloud.com/{objectKey}
      * 
      * @param objectKey OBS对象键
      * @return 访问URL
      */
     private String generateObsUrl(String objectKey) {
-        // 根据OBS配置生成访问URL
-        // 格式：https://{bucket}.obs.{region}.myhuaweicloud.com/{objectKey}
-        // 如果配置了endpoint，也可以使用endpoint
-        if (StringUtils.hasText(obsEndpoint) && !obsEndpoint.equals("test")) {
-            // 如果配置了endpoint，使用endpoint
-            String endpoint = obsEndpoint.startsWith("http") ? obsEndpoint : "https://" + obsEndpoint;
-            return String.format("%s/%s", endpoint, objectKey);
-        } else {
-            // 使用region构建URL
-            return String.format("https://%s.obs.%s.myhuaweicloud.com/%s", 
-                    bucketName, 
-                    region, 
-                    objectKey);
+        if (!StringUtils.hasText(bucketName)) {
+            throw new IllegalStateException("未配置 huaweicloud.obs.bucket，无法生成OBS URL");
         }
+        if (!StringUtils.hasText(region)) {
+            throw new IllegalStateException("未配置 huaweicloud.region，无法生成OBS URL");
+        }
+        // 始终使用包含桶名的URL格式：https://{bucket}.obs.{region}.myhuaweicloud.com/{objectKey}
+        return String.format("https://%s.obs.%s.myhuaweicloud.com/%s", 
+                bucketName, 
+                region, 
+                objectKey);
     }
 }
 

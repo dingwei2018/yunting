@@ -38,8 +38,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.Map;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
 import com.yunting.service.ObsStorageService;
 import org.slf4j.Logger;
@@ -58,10 +56,6 @@ public class SynthesisServiceImpl implements SynthesisService {
     private final TaskMapper taskMapper;
     private final SynthesisSettingMapper synthesisSettingMapper;
     private final ObsStorageService obsStorageService;
-
-    // 存储job_id和breaking_sentence_id的映射关系
-    // key: job_id, value: breaking_sentence_id
-    private final Map<String, Long> jobIdMapping = new ConcurrentHashMap<>();
 
     // 从 application.properties 注入配置参数
     // 使用 @Value 注解，格式：${配置键名:默认值}
@@ -170,9 +164,10 @@ public class SynthesisServiceImpl implements SynthesisService {
             String jobId = response.getJobId();
             
             if (StringUtils.hasText(jobId)) {
-                // 保存job_id和breaking_sentence_id的映射关系
-                jobIdMapping.put(jobId, breakingSentenceId);
                 logger.info("创建TTS任务成功，jobId: {}, breakingSentenceId: {}", jobId, breakingSentenceId);
+                
+                // 保存job_id到数据库
+                breakingSentenceMapper.updateJobId(breakingSentenceId, jobId);
                 
                 // 更新状态为合成中
                 breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 1, null, null);
@@ -356,13 +351,14 @@ public class SynthesisServiceImpl implements SynthesisService {
             return;
         }
 
-        // 根据job_id查找对应的breaking_sentence_id
-        Long breakingSentenceId = jobIdMapping.get(jobId);
-        if (breakingSentenceId == null) {
-            logger.warn("未找到job_id对应的断句ID，jobId: {}", jobId);
+        // 根据job_id从数据库查找对应的breaking_sentence_id
+        BreakingSentence sentence = breakingSentenceMapper.selectByJobId(jobId);
+        if (sentence == null) {
+            logger.warn("未找到job_id对应的断句，jobId: {}", jobId);
             return;
         }
 
+        Long breakingSentenceId = sentence.getBreakingSentenceId();
         logger.info("处理TTS回调，jobId: {}, status: {}, breakingSentenceId: {}", jobId, status, breakingSentenceId);
 
         try {
@@ -382,9 +378,6 @@ public class SynthesisServiceImpl implements SynthesisService {
             logger.error("处理TTS回调异常，jobId: {}, breakingSentenceId: {}", jobId, breakingSentenceId, e);
             // 更新状态为失败
             breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-        } finally {
-            // 处理完成后，可以选择保留映射关系（用于查询）或删除
-            // 这里保留映射关系，以便后续查询
         }
     }
 

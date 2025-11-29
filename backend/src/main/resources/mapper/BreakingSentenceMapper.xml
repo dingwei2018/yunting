@@ -15,6 +15,7 @@
         <result property="audioUrl" column="audio_url"/>
         <result property="audioDuration" column="audio_duration"/>
         <result property="ssml" column="ssml"/>
+        <result property="jobId" column="job_id"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
@@ -110,6 +111,17 @@
     <update id="updateSsml">
         UPDATE breaking_sentences
         SET ssml = #{ssml},
+            updated_at = NOW()
+        WHERE breaking_sentence_id = #{breakingSentenceId}
+    </update>
+
+    <select id="selectByJobId" parameterType="string" resultMap="BreakingSentenceResultMap">
+        SELECT * FROM breaking_sentences WHERE job_id = #{jobId} LIMIT 1
+    </select>
+
+    <update id="updateJobId">
+        UPDATE breaking_sentences
+        SET job_id = #{jobId},
             updated_at = NOW()
         WHERE breaking_sentence_id = #{breakingSentenceId}
     </update>

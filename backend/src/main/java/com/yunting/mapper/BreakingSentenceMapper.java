@@ -40,5 +40,10 @@ public interface BreakingSentenceMapper {
 
     int updateSsml(@Param("breakingSentenceId") Long breakingSentenceId,
                    @Param("ssml") String ssml);
+
+    BreakingSentence selectByJobId(@Param("jobId") String jobId);
+
+    int updateJobId(@Param("breakingSentenceId") Long breakingSentenceId,
+                    @Param("jobId") String jobId);
 }
 

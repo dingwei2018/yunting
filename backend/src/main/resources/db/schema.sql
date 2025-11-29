@@ -49,12 +49,14 @@ CREATE TABLE IF NOT EXISTS `breaking_sentences` (
     `audio_url` VARCHAR(500) NULL,
     `audio_duration` INT NULL,
     `ssml` TEXT NULL,
+    `job_id` VARCHAR(100) NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX `idx_breaking_task_id` (`task_id`),
     INDEX `idx_original_sentence_id` (`original_sentence_id`),
     INDEX `idx_breaking_sequence` (`task_id`, `sequence`),
     INDEX `idx_synthesis_status` (`synthesis_status`),
+    INDEX `idx_job_id` (`job_id`),
     CONSTRAINT `fk_breaking_sentences_task`
         FOREIGN KEY (`task_id`) REFERENCES `tasks` (`task_id`)
         ON DELETE CASCADE,
