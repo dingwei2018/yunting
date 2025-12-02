@@ -76,13 +76,13 @@ public class TtsCallbackConsumer {
                             .setClientConfiguration(configuration)
                             .setConsumerGroup(rocketMQConfig.getTtsCallbackConsumerGroup())
                             .setSubscriptionExpressions(Collections.singletonMap(
-                                    rocketMQConfig.getTtsCallbackTopic(), filterExpression))
+                                    rocketMQConfig.getTtsTopic(), filterExpression))  // 使用共用的 Topic
                             .setConsumptionThreadCount(rocketMQConfig.getConsumptionThreadCount())  // 设置并发线程数为5
                             .setMessageListener(messageListener)  // 在 builder 中设置监听器
                             .build();
                     
                     logger.info("TTS回调消息监听器注册成功，Topic: {}, ConsumerGroup: {}, 并发线程数: {}", 
-                            rocketMQConfig.getTtsCallbackTopic(), 
+                            rocketMQConfig.getTtsTopic(), 
                             rocketMQConfig.getTtsCallbackConsumerGroup(),
                             rocketMQConfig.getConsumptionThreadCount());
                     return; // 成功启动，退出循环

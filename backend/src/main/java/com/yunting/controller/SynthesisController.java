@@ -33,6 +33,9 @@ public class SynthesisController {
         this.rocketMQTtsCallbackService = rocketMQTtsCallbackService;
     }
 
+    /**
+     * 语音合成接口
+     */
     @PostMapping("/breaking-sentences/synthesize")
     public ApiResponse<BreakingSentenceSynthesisResponseDTO> synthesize(
             @RequestParam("breaking_sentence_id") Long breakingSentenceId,

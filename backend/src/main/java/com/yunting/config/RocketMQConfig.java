@@ -26,8 +26,8 @@ public class RocketMQConfig {
     @Value("${rocketmq.proxy-endpoint}")
     private String proxyEndpoint;
     
-    @Value("${rocketmq.tts-callback.topic}")
-    private String ttsCallbackTopic;
+    @Value("${rocketmq.tts.topic}")
+    private String ttsTopic;
     
     @Value("${rocketmq.tts-callback.consumer-group}")
     private String ttsCallbackConsumerGroup;
@@ -35,24 +35,28 @@ public class RocketMQConfig {
     @Value("${rocketmq.tts-callback.consumption-thread-count:5}")
     private int consumptionThreadCount;
     
+    @Value("${rocketmq.tts-synthesis.consumer-group}")
+    private String ttsSynthesisConsumerGroup;
+    
     private final ClientServiceProvider provider = ClientServiceProvider.loadService();
     
     /**
-     * 创建 RocketMQ Producer Bean
+     * 创建 RocketMQ Producer Bean（共用）
+     * 用于发送 TTS_CALLBACK 和 TTS_SYNTHESIS 两种类型的消息
      */
     @Bean(destroyMethod = "close")
-    public Producer ttsCallbackProducer() {
+    public Producer ttsProducer() {
         try {
             ClientConfigurationBuilder builder = ClientConfiguration.newBuilder()
                     .setEndpoints(proxyEndpoint);
             ClientConfiguration configuration = builder.build();
             
             Producer producer = provider.newProducerBuilder()
-                    .setTopics(ttsCallbackTopic)
+                    .setTopics(ttsTopic)
                     .setClientConfiguration(configuration)
                     .build();
             
-            logger.info("RocketMQ Producer 初始化成功，Topic: {}", ttsCallbackTopic);
+            logger.info("RocketMQ Producer 初始化成功，Topic: {}", ttsTopic);
             return producer;
         } catch (Exception e) {
             logger.error("RocketMQ Producer 初始化失败", e);
@@ -68,10 +72,10 @@ public class RocketMQConfig {
     }
     
     /**
-     * 获取 TTS 回调 Topic
+     * 获取 TTS Topic（共用）
      */
-    public String getTtsCallbackTopic() {
-        return ttsCallbackTopic;
+    public String getTtsTopic() {
+        return ttsTopic;
     }
     
     /**
@@ -79,6 +83,13 @@ public class RocketMQConfig {
      */
     public String getTtsCallbackConsumerGroup() {
         return ttsCallbackConsumerGroup;
+    }
+    
+    /**
+     * 获取 TTS 合成请求 Consumer Group
+     */
+    public String getTtsSynthesisConsumerGroup() {
+        return ttsSynthesisConsumerGroup;
     }
     
     /**

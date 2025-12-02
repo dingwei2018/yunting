@@ -39,7 +39,9 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Objects;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
+import com.yunting.dto.synthesis.TtsSynthesisRequest;
 import com.yunting.service.ObsStorageService;
+import com.yunting.service.RocketMQTtsSynthesisService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +58,7 @@ public class SynthesisServiceImpl implements SynthesisService {
     private final TaskMapper taskMapper;
     private final SynthesisSettingMapper synthesisSettingMapper;
     private final ObsStorageService obsStorageService;
+    private final RocketMQTtsSynthesisService rocketMQTtsSynthesisService;
 
     // 从 application.properties 注入配置参数
     // 使用 @Value 注解，格式：${配置键名:默认值}
@@ -91,11 +94,13 @@ public class SynthesisServiceImpl implements SynthesisService {
     public SynthesisServiceImpl(BreakingSentenceMapper breakingSentenceMapper,
                                 TaskMapper taskMapper,
                                 SynthesisSettingMapper synthesisSettingMapper,
-                                ObsStorageService obsStorageService) {
+                                ObsStorageService obsStorageService,
+                                RocketMQTtsSynthesisService rocketMQTtsSynthesisService) {
         this.breakingSentenceMapper = breakingSentenceMapper;
         this.taskMapper = taskMapper;
         this.synthesisSettingMapper = synthesisSettingMapper;
         this.obsStorageService = obsStorageService;
+        this.rocketMQTtsSynthesisService = rocketMQTtsSynthesisService;
     }
 
     @Override
@@ -128,87 +133,32 @@ public class SynthesisServiceImpl implements SynthesisService {
             upsertSetting(breakingSentenceId, voiceId, speechRate, volume, pitch);
         }
 
-        // 5. 根据断句的字符数估算音频时长
-        //    估算规则：每字符约120毫秒，最少1000毫秒
-        int audioDuration = estimateDuration(sentence.getCharCount());
+        // 5. 构建TTS合成请求消息
+        TtsSynthesisRequest synthesisRequest = new TtsSynthesisRequest();
+        synthesisRequest.setBreakingSentenceId(breakingSentenceId);
+        synthesisRequest.setVoiceId(voiceId);
+        synthesisRequest.setSpeechRate(speechRate);
+        synthesisRequest.setVolume(volume);
+        synthesisRequest.setPitch(pitch);
+        synthesisRequest.setResetStatus(resetStatus);
+        synthesisRequest.setContent(sentence.getContent());
         
-        // 6. 生成音频URL
-        //    注意：当前为示例URL，实际生产环境应通过TTS服务生成真实的音频文件URL
-        //    示例：使用配置的OBS前缀来构建URL
-        //    String audioUrl = huaweiCloudObsPrefix + "breaking_" + sentence.getBreakingSentenceId() + ".mp3";
-        String audioUrl = buildAudioUrl(sentence.getBreakingSentenceId());
-        
-        // 示例：在方法中使用配置参数
-        // 例如：可以使用 huaweiCloudAk, huaweiCloudSk, huaweiCloudRegion, huaweiCloudProjectId 等
-        // 这些参数已经从 application.properties 中自动注入，可以直接使用
-        // System.out.println("使用区域: " + huaweiCloudRegion);
-        // System.out.println("项目ID: " + huaweiCloudProjectId);
-
-        //创建TTS异步任务
-        ICredential auth = new BasicCredentials()
-                .withProjectId(huaweiCloudProjectId)
-                .withAk(huaweiCloudAk).withSk(huaweiCloudSk);
-        MetaStudioClient client = MetaStudioClient.newBuilder()
-                .withCredential(auth)
-                .withRegion(MetaStudioRegion.valueOf(huaweiCloudRegion))
-                .build();
-        CreateAsyncTtsJobRequest request = new CreateAsyncTtsJobRequest();
-        CreateAsyncTtsJobRequestBody body = new CreateAsyncTtsJobRequestBody();
-
-        //参数设置
-        body.withText(sentence.getSsml())
-                .withVoiceAssetId(voiceId)
-                .withSpeed(speechRate)
-                .withPitch(pitch)
-                .withVolume(volume)
-                .withCallbackConfig( new TtsCallBackConfig().withCallbackUrl(callbackUrl));
-        request.withBody(body);
-        try {
-            CreateAsyncTtsJobResponse response = client.createAsyncTtsJob(request);
-            String jobId = response.getJobId();
-            
-            if (StringUtils.hasText(jobId)) {
-                logger.info("创建TTS任务成功，jobId: {}, breakingSentenceId: {}", jobId, breakingSentenceId);
-                
-                // 保存job_id到数据库
-                breakingSentenceMapper.updateJobId(breakingSentenceId, jobId);
-                
-                // 更新状态为合成中
-                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 1, null, null);
-            } else {
-                logger.warn("创建TTS任务失败：未返回jobId");
-                throw new BusinessException(10500, "创建TTS任务失败：未返回jobId");
-            }
-        } catch (ConnectionException e) {
-            logger.error("创建TTS任务连接异常", e);
+        // 6. 发送消息到RocketMQ，而不是直接调用华为云API
+        //    实际的API调用会在 TtsSynthesisConsumer 中限流处理（5次/秒）
+        boolean success = rocketMQTtsSynthesisService.sendSynthesisRequest(synthesisRequest);
+        if (!success) {
             breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-            throw new BusinessException(10500, "创建TTS任务连接异常: " + e.getMessage());
-        } catch (RequestTimeoutException e) {
-            logger.error("创建TTS任务请求超时", e);
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-            throw new BusinessException(10500, "创建TTS任务请求超时: " + e.getMessage());
-        } catch (ServiceResponseException e) {
-            logger.error("创建TTS任务服务响应异常: HTTP状态码={}, 错误码={}, 错误信息={}, 请求ID={}",
-                    e.getHttpStatusCode(), e.getErrorCode(), e.getErrorMsg(), e.getRequestId());
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-            throw new BusinessException(10500, "创建TTS任务失败: " + e.getErrorMsg());
-        } catch (BusinessException e) {
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-            throw e;
-        } catch (Exception e) {
-            logger.error("创建TTS任务异常", e);
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-            throw new BusinessException(10500, "创建TTS任务异常: " + e.getMessage());
+            throw new BusinessException(10500, "TTS合成请求发送失败");
         }
-
-        // 注意：此时任务已提交，等待回调通知
-        // 不再直接更新为已完成状态，而是等待回调处理
-
+        
+        // 7. 更新状态为合成中（实际创建任务会在 Consumer 中完成）
+        breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 1, null, null);
+        
         // 8. 构建并返回响应对象
         BreakingSentenceSynthesisResponseDTO responseDTO = new BreakingSentenceSynthesisResponseDTO();
         responseDTO.setBreakingSentenceId(breakingSentenceId);
         responseDTO.setTaskId(sentence.getTaskId());
-        responseDTO.setSynthesisStatus(2); // 2表示已合成
+        responseDTO.setSynthesisStatus(1); // 1表示合成中
         return responseDTO;
     }
 
