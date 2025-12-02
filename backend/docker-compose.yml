@@ -29,6 +29,51 @@ services:
       timeout: 5s
       retries: 5
 
+  # RocketMQ NameServer 服务
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.3.2
+    container_name: yunting-rocketmq-namesrv
+    restart: unless-stopped
+    ports:
+      - "9876:9876"
+    networks:
+      - yunting-network
+    command: sh mqnamesrv
+
+  # RocketMQ Broker 服务
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.2
+    container_name: yunting-rocketmq-broker
+    restart: unless-stopped
+    depends_on:
+      - rocketmq-namesrv
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+      - "10912:10912"
+    environment:
+      - NAMESRV_ADDR=rocketmq-namesrv:9876
+    networks:
+      - yunting-network
+    command: sh mqbroker -n rocketmq-namesrv:9876 autoCreateTopicEnable=true
+
+  # RocketMQ Proxy 服务
+  rocketmq-proxy:
+    image: apache/rocketmq:5.3.2
+    container_name: yunting-rocketmq-proxy
+    restart: unless-stopped
+    depends_on:
+      - rocketmq-broker
+      - rocketmq-namesrv
+    ports:
+      - "8082:8080"  # HTTP 端口，避免与 backend 的 8080 冲突
+      - "8081:8081"  # gRPC 端口，客户端使用
+    environment:
+      - NAMESRV_ADDR=rocketmq-namesrv:9876
+    networks:
+      - yunting-network
+    command: sh mqproxy
+
   # 后端应用服务
   backend:
     build:
@@ -39,6 +84,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      rocketmq-proxy:
+        condition: service_started
     ports:
       - "8080:8080"
     environment:
