@@ -6,6 +6,7 @@ import com.yunting.dto.synthesis.BreakingSentenceSynthesisResponseDTO;
 import com.yunting.dto.synthesis.TaskSynthesisBatchResponseDTO;
 import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
+import com.yunting.service.RocketMQTtsCallbackService;
 import com.yunting.service.SynthesisService;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,9 +25,12 @@ import java.util.stream.Collectors;
 public class SynthesisController {
 
     private final SynthesisService synthesisService;
+    private final RocketMQTtsCallbackService rocketMQTtsCallbackService;
 
-    public SynthesisController(SynthesisService synthesisService) {
+    public SynthesisController(SynthesisService synthesisService,
+                                RocketMQTtsCallbackService rocketMQTtsCallbackService) {
         this.synthesisService = synthesisService;
+        this.rocketMQTtsCallbackService = rocketMQTtsCallbackService;
     }
 
     @PostMapping("/breaking-sentences/synthesize")
@@ -75,6 +79,7 @@ public class SynthesisController {
     /**
      * 华为云TTS回调接口
      * 接收华为云TTS异步任务的回调通知
+     * 将回调请求发送到RocketMQ消息队列，由消费者异步处理
      * 
      * @param callbackRequest 回调请求体，包含任务状态、job_id、音频下载URL等信息
      * @return 处理结果
@@ -82,8 +87,13 @@ public class SynthesisController {
     @PostMapping("/synthesis/callback")
     public ApiResponse<String> handleTtsCallback(@RequestBody TtsCallbackRequest callbackRequest) {
         try {
-            synthesisService.handleTtsCallback(callbackRequest);
-            return ResponseUtil.success("回调处理成功");
+            // 发送消息到RocketMQ，而不是直接处理
+            boolean success = rocketMQTtsCallbackService.sendTtsCallbackMessage(callbackRequest);
+            if (success) {
+                return ResponseUtil.success("回调消息已发送到消息队列");
+            } else {
+                return ResponseUtil.error(10500, "回调消息发送失败");
+            }
         } catch (Exception e) {
             return ResponseUtil.error(10500, "回调处理失败: " + e.getMessage());
         }
