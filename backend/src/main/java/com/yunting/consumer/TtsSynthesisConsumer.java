@@ -83,7 +83,7 @@ public class TtsSynthesisConsumer {
     
     @PostConstruct
     public void startConsuming() {
-        logger.info("TTS合成请求消费者启动，限流速率: 5次/秒");
+        logger.info("TTS合成请求消费者启动");
         
         // 启动限流处理线程
         running = true;
