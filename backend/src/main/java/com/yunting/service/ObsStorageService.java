@@ -2,6 +2,7 @@ package com.yunting.service;
 
 import com.obs.services.ObsClient;
 import com.obs.services.exception.ObsException;
+import com.obs.services.model.AccessControlList;
 import com.obs.services.model.PutObjectRequest;
 import com.obs.services.model.PutObjectResult;
 import org.slf4j.Logger;
@@ -132,6 +133,11 @@ public class ObsStorageService {
             
             try (FileInputStream fileInputStream = new FileInputStream(localFile)) {
                 PutObjectRequest putRequest = new PutObjectRequest(bucketName, objectKey, fileInputStream);
+
+                // 获取桶的ACL并应用到对象，使对象的ACL继承桶的ACL
+                AccessControlList bucketAcl = obsClient.getBucketAcl(bucketName);
+                putRequest.setAcl(bucketAcl);
+
                 PutObjectResult result = obsClient.putObject(putRequest);
                 
                 String obsUrl = generateObsUrl(objectKey);
