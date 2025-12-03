@@ -99,6 +99,7 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         }
 
         // 创建合并记录，状态为 processing
+        // 注意：breaking_sentence_ids 会在实际合并后更新为实际合并的断句ID
         String mergedUrl = buildMergedAudioUrl(taskId);
         AudioMerge audioMerge = new AudioMerge();
         audioMerge.setTaskId(taskId);
@@ -125,22 +126,45 @@ public class AudioMergeServiceImpl implements AudioMergeService {
             }
             
             // 2. 下载所有音频文件到本地临时目录（与 synthesize 接口共用）
+            // 只下载有 audio_url 的断句，跳过没有音频的断句
             logger.info("开始下载音频文件，任务ID: {}, 断句数量: {}", taskId, toMerge.size());
             long timestamp = System.currentTimeMillis();
+            List<BreakingSentence> validSentences = new ArrayList<>(); // 记录实际有音频的断句
             
             for (int i = 0; i < toMerge.size(); i++) {
                 BreakingSentence bs = toMerge.get(i);
                 String audioUrl = bs.getAudioUrl();
                 
+                // 跳过没有 audio_url 的断句
+                if (!StringUtils.hasText(audioUrl)) {
+                    logger.warn("跳过没有音频URL的断句，breakingSentenceId: {}, sequence: {}", 
+                        bs.getBreakingSentenceId(), bs.getSequence());
+                    continue;
+                }
+                
                 // 使用 merge_ 前缀区分合并任务的临时文件
                 String fileName = String.format("merge_input_%d_%d_%d_%d.wav", 
-                    taskId, bs.getBreakingSentenceId(), i, timestamp);
+                    taskId, bs.getBreakingSentenceId(), validSentences.size(), timestamp);
                 File tempFile = localDir.resolve(fileName).toFile();
                 
-                downloadAudioFile(audioUrl, tempFile);
-                tempInputFiles.add(tempFile);
-                logger.info("下载音频文件成功: {} -> {}", audioUrl, tempFile.getAbsolutePath());
+                try {
+                    downloadAudioFile(audioUrl, tempFile);
+                    tempInputFiles.add(tempFile);
+                    validSentences.add(bs);
+                    logger.info("下载音频文件成功: {} -> {}", audioUrl, tempFile.getAbsolutePath());
+                } catch (Exception e) {
+                    // 下载失败时，记录日志但不抛出异常，继续处理其他断句
+                    logger.warn("下载音频文件失败，跳过该断句，URL: {}, breakingSentenceId: {}, 错误: {}", 
+                        audioUrl, bs.getBreakingSentenceId(), e.getMessage());
+                }
             }
+            
+            // 检查是否有可合并的音频文件
+            if (tempInputFiles.isEmpty()) {
+                throw new BusinessException(10404, "没有可合并的音频文件（所有断句都没有音频或下载失败）");
+            }
+            
+            logger.info("实际可合并的音频文件数量: {}/{}", tempInputFiles.size(), toMerge.size());
             
             // 3. 使用 FFmpeg 合并音频
             String outputFileName = String.format("merge_output_%d_%d.wav", taskId, timestamp);
@@ -157,6 +181,13 @@ public class AudioMergeServiceImpl implements AudioMergeService {
             logger.info("合并音频上传到OBS成功: {}", mergedUrl);
             
             // 5. 更新合并记录
+            // 更新为实际合并的断句ID列表
+            String actualSentenceIds = validSentences.stream()
+                    .map(BreakingSentence::getBreakingSentenceId)
+                    .map(String::valueOf)
+                    .collect(Collectors.joining(","));
+            
+            audioMerge.setBreakingSentenceIds(actualSentenceIds);
             audioMerge.setMergedAudioUrl(mergedUrl);
             audioMerge.setAudioDuration(mergedDuration);
             audioMerge.setStatus(3); // completed
