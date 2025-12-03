@@ -14,9 +14,9 @@ ENV TZ=Asia/Shanghai \
 # 暴露端口
 EXPOSE 8080
 
-# 安装 curl 用于健康检查（放在复制 jar 之前，利用 Docker 层缓存）
+# 安装 curl 和 ffmpeg（放在复制 jar 之前，利用 Docker 层缓存）
 RUN apt-get update && \
-    apt-get install -y curl && \
+    apt-get install -y curl ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
 # 复制 jar 文件到容器（放在最后，这样 jar 更新时不会影响前面的层缓存）
