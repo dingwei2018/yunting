@@ -24,5 +24,14 @@
         SELECT * FROM audio_merges WHERE merge_id = #{mergeId}
     </select>
 
+    <update id="updateById" parameterType="com.yunting.model.AudioMerge">
+        UPDATE audio_merges
+        SET merged_audio_url = #{mergedAudioUrl},
+            audio_duration = #{audioDuration},
+            status = #{status},
+            updated_at = NOW()
+        WHERE merge_id = #{mergeId}
+    </update>
+
 </mapper>
 

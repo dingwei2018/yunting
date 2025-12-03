@@ -20,5 +20,7 @@ public interface TaskMapper {
     int updateBreakingStandard(@Param("taskId") Long taskId,
                                @Param("breakingStandardId") Integer breakingStandardId,
                                @Param("charCountLimit") Integer charCountLimit);
+
+    int updateById(Task task);
 }
 

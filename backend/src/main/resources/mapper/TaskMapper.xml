@@ -55,5 +55,13 @@
             updated_at = NOW()
         WHERE task_id = #{taskId}
     </update>
+
+    <update id="updateById" parameterType="com.yunting.model.Task">
+        UPDATE tasks
+        SET merged_audio_url = #{mergedAudioUrl},
+            merged_audio_duration = #{mergedAudioDuration},
+            updated_at = NOW()
+        WHERE task_id = #{taskId}
+    </update>
 </mapper>
 
