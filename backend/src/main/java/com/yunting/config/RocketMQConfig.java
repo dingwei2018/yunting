@@ -38,6 +38,12 @@ public class RocketMQConfig {
     @Value("${rocketmq.tts-synthesis.consumer-group}")
     private String ttsSynthesisConsumerGroup;
     
+    @Value("${rocketmq.audio-merge.consumer-group}")
+    private String audioMergeConsumerGroup;
+    
+    @Value("${rocketmq.audio-merge.consumption-thread-count:3}")
+    private int audioMergeConsumptionThreadCount;
+    
     private final ClientServiceProvider provider = ClientServiceProvider.loadService();
     
     /**
@@ -97,6 +103,20 @@ public class RocketMQConfig {
      */
     public int getConsumptionThreadCount() {
         return consumptionThreadCount;
+    }
+    
+    /**
+     * 获取音频合并 Consumer Group
+     */
+    public String getAudioMergeConsumerGroup() {
+        return audioMergeConsumerGroup;
+    }
+    
+    /**
+     * 获取音频合并消费线程数
+     */
+    public int getAudioMergeConsumptionThreadCount() {
+        return audioMergeConsumptionThreadCount;
     }
     
     /**

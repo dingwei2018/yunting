@@ -1,5 +1,6 @@
 package com.yunting.service.impl;
 
+import com.yunting.dto.audio.AudioMergeMessage;
 import com.yunting.dto.audio.AudioMergeRequest;
 import com.yunting.dto.audio.AudioMergeResponseDTO;
 import com.yunting.exception.BusinessException;
@@ -12,6 +13,7 @@ import com.yunting.model.Task;
 import com.yunting.service.AudioMergeService;
 import com.yunting.service.FFmpegService;
 import com.yunting.service.ObsStorageService;
+import com.yunting.service.RocketMQAudioMergeService;
 import com.yunting.util.ValidationUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +43,7 @@ public class AudioMergeServiceImpl implements AudioMergeService {
     private final BreakingSentenceMapper breakingSentenceMapper;
     private final FFmpegService ffmpegService;
     private final ObsStorageService obsStorageService;
+    private final RocketMQAudioMergeService rocketMQAudioMergeService;
 
     // 与 synthesize 接口共用临时目录配置
     @Value("${file.storage.local.path:temp/audio}")
@@ -50,12 +53,14 @@ public class AudioMergeServiceImpl implements AudioMergeService {
                                  TaskMapper taskMapper,
                                  BreakingSentenceMapper breakingSentenceMapper,
                                  FFmpegService ffmpegService,
-                                 ObsStorageService obsStorageService) {
+                                 ObsStorageService obsStorageService,
+                                 RocketMQAudioMergeService rocketMQAudioMergeService) {
         this.audioMergeMapper = audioMergeMapper;
         this.taskMapper = taskMapper;
         this.breakingSentenceMapper = breakingSentenceMapper;
         this.ffmpegService = ffmpegService;
         this.obsStorageService = obsStorageService;
+        this.rocketMQAudioMergeService = rocketMQAudioMergeService;
     }
 
     @Override
@@ -112,6 +117,75 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         audioMerge.setAudioDuration(0);
         audioMerge.setStatus(2); // processing
         audioMergeMapper.insert(audioMerge);
+
+        // 发送消息到 RocketMQ，异步处理
+        AudioMergeMessage mergeMessage = new AudioMergeMessage(
+            taskId, 
+            audioMerge.getMergeId(), 
+            sentenceIds
+        );
+        
+        boolean success = rocketMQAudioMergeService.sendAudioMergeMessage(mergeMessage);
+        if (!success) {
+            // 发送失败，更新状态为 failed
+            updateMergeStatus(audioMerge.getMergeId(), 4);
+            throw new BusinessException(10500, "发送合并任务到消息队列失败");
+        }
+        
+        logger.info("音频合并任务已发送到消息队列，taskId: {}, mergeId: {}", taskId, audioMerge.getMergeId());
+        return toResponse(audioMerge);
+    }
+
+    @Override
+    public void processAudioMerge(AudioMergeMessage mergeMessage) {
+        Long taskId = mergeMessage.getTaskId();
+        Long mergeId = mergeMessage.getMergeId();
+        List<Long> sentenceIds = mergeMessage.getSentenceIds();
+        
+        logger.info("开始处理音频合并，taskId: {}, mergeId: {}", taskId, mergeId);
+        
+        // 获取合并记录
+        AudioMerge audioMerge = audioMergeMapper.selectById(mergeId);
+        if (audioMerge == null) {
+            logger.error("合并记录不存在，mergeId: {}", mergeId);
+            return;
+        }
+        
+        // 获取任务
+        Task task = taskMapper.selectById(taskId);
+        if (task == null) {
+            logger.error("任务不存在，taskId: {}", taskId);
+            updateMergeStatus(mergeId, 4);
+            return;
+        }
+        
+        // 获取断句列表
+        List<BreakingSentence> candidates = breakingSentenceMapper.selectByTaskId(taskId);
+        if (CollectionUtils.isEmpty(candidates)) {
+            logger.error("任务暂无断句，taskId: {}", taskId);
+            updateMergeStatus(mergeId, 4);
+            return;
+        }
+
+        // 筛选要合并的断句
+        List<BreakingSentence> toMerge;
+        if (!CollectionUtils.isEmpty(sentenceIds)) {
+            toMerge = candidates.stream()
+                    .filter(bs -> sentenceIds.contains(bs.getBreakingSentenceId()))
+                    .sorted(Comparator.comparing(BreakingSentence::getSequence))
+                    .collect(Collectors.toList());
+        } else {
+            toMerge = candidates.stream()
+                    .filter(bs -> bs.getAudioUrl() != null && StringUtils.hasText(bs.getAudioUrl()))
+                    .sorted(Comparator.comparing(BreakingSentence::getSequence))
+                    .collect(Collectors.toList());
+        }
+
+        if (toMerge.isEmpty()) {
+            logger.error("没有可合并的断句，taskId: {}", taskId);
+            updateMergeStatus(mergeId, 4);
+            return;
+        }
 
         // 执行音频合并
         List<File> tempInputFiles = new ArrayList<>();
@@ -177,7 +251,7 @@ public class AudioMergeServiceImpl implements AudioMergeService {
             // 4. 上传合并后的音频到 OBS
             String obsFileName = "task_" + taskId + "_merged_" + timestamp + ".wav";
             String objectKey = obsStorageService.buildObjectKey(obsFileName);
-            mergedUrl = obsStorageService.uploadFromFile(tempOutputFile, objectKey);
+            String mergedUrl = obsStorageService.uploadFromFile(tempOutputFile, objectKey);
             logger.info("合并音频上传到OBS成功: {}", mergedUrl);
             
             // 5. 更新合并记录
@@ -198,16 +272,11 @@ public class AudioMergeServiceImpl implements AudioMergeService {
             task.setMergedAudioDuration(mergedDuration);
             taskMapper.updateById(task);
             
-            return toResponse(audioMerge);
+            logger.info("音频合并处理完成，taskId: {}, mergeId: {}", taskId, mergeId);
             
-        } catch (BusinessException e) {
-            // 业务异常直接抛出
-            updateMergeStatus(audioMerge.getMergeId(), 4); // failed
-            throw e;
         } catch (Exception e) {
-            logger.error("合并音频失败，任务ID: {}", taskId, e);
-            updateMergeStatus(audioMerge.getMergeId(), 4); // failed
-            throw new BusinessException(10500, "合并音频失败: " + e.getMessage());
+            logger.error("合并音频失败，任务ID: {}, mergeId: {}", taskId, mergeId, e);
+            updateMergeStatus(mergeId, 4); // failed
         } finally {
             // 清理临时文件
             cleanupTempFiles(tempInputFiles);
