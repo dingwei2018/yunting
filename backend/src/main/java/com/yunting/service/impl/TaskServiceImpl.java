@@ -79,6 +79,12 @@ public class TaskServiceImpl implements TaskService {
         task.setMergedAudioUrl(null);
         task.setMergedAudioDuration(null);
         taskMapper.insert(task);
+        
+        // 重新查询任务以获取数据库自动填充的 createdAt 和 updatedAt 字段
+        Task persistedTask = taskMapper.selectById(task.getTaskId());
+        if (persistedTask == null) {
+            throw new BusinessException("任务创建失败");
+        }
 
         // 创建原始拆句记录
         List<OriginalSentence> originalSentences = new ArrayList<>();
@@ -119,14 +125,15 @@ public class TaskServiceImpl implements TaskService {
 
         // 构建响应DTO
         TaskCreateResponseDTO response = new TaskCreateResponseDTO();
-        response.setTaskId(task.getTaskId());
-        response.setContent(task.getContent());
-        response.setCharCount(task.getCharCount());
-        response.setStatus(task.getStatus());
-        response.setAudioUrl(task.getMergedAudioUrl());
-        response.setAudioDuration(task.getMergedAudioDuration());
-        response.setCreatedAt(task.getCreatedAt());
-        response.setUpdatedAt(task.getUpdatedAt());
+        response.setTaskId(persistedTask.getTaskId());
+        response.setContent(persistedTask.getContent());
+        response.setCharCount(persistedTask.getCharCount());
+        response.setStatus(persistedTask.getStatus());
+        // audioUrl 和 audioDuration 如果为 null，则设置为空值
+        response.setAudioUrl(persistedTask.getMergedAudioUrl() != null ? persistedTask.getMergedAudioUrl() : "");
+        response.setAudioDuration(persistedTask.getMergedAudioDuration() != null ? persistedTask.getMergedAudioDuration() : 0);
+        response.setCreatedAt(persistedTask.getCreatedAt());
+        response.setUpdatedAt(persistedTask.getUpdatedAt());
 
         // 转换原始拆句列表
         List<OriginalSentenceDTO> originalSentenceDTOList = persistedOriginals.stream()
