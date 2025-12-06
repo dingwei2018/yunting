@@ -1,13 +1,19 @@
 package com.yunting.dto.task;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
-public class TaskListItemDTO {
+/**
+ * 创建任务响应DTO
+ */
+public class TaskCreateResponseDTO {
     private Long taskId;
     private String content;
     private Integer charCount;
     private Integer status;
-    private Integer totalSentences;
+    private String audioUrl;
+    private Integer audioDuration;
+    private List<OriginalSentenceDTO> originalSentenceList;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -43,12 +49,28 @@ public class TaskListItemDTO {
         this.status = status;
     }
 
-    public Integer getTotalSentences() {
-        return totalSentences;
+    public String getAudioUrl() {
+        return audioUrl;
     }
 
-    public void setTotalSentences(Integer totalSentences) {
-        this.totalSentences = totalSentences;
+    public void setAudioUrl(String audioUrl) {
+        this.audioUrl = audioUrl;
+    }
+
+    public Integer getAudioDuration() {
+        return audioDuration;
+    }
+
+    public void setAudioDuration(Integer audioDuration) {
+        this.audioDuration = audioDuration;
+    }
+
+    public List<OriginalSentenceDTO> getOriginalSentenceList() {
+        return originalSentenceList;
+    }
+
+    public void setOriginalSentenceList(List<OriginalSentenceDTO> originalSentenceList) {
+        this.originalSentenceList = originalSentenceList;
     }
 
     public LocalDateTime getCreatedAt() {

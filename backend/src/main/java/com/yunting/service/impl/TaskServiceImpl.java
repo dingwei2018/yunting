@@ -1,11 +1,8 @@
 package com.yunting.service.impl;
 
-import com.yunting.dto.task.BreakingSentenceDTO;
+import com.yunting.dto.task.OriginalSentenceDTO;
 import com.yunting.dto.task.TaskCreateRequest;
-import com.yunting.dto.task.TaskDetailDTO;
-import com.yunting.dto.task.TaskListItemDTO;
-import com.yunting.dto.task.TaskListResponseDTO;
-import com.yunting.dto.task.TaskSentenceDTO;
+import com.yunting.dto.task.TaskCreateResponseDTO;
 import com.yunting.exception.BusinessException;
 import com.yunting.mapper.BreakingSentenceMapper;
 import com.yunting.mapper.OriginalSentenceMapper;
@@ -24,10 +21,21 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 任务服务实现类
+ */
 @Service
 public class TaskServiceImpl implements TaskService {
 
-    private static final int STATUS_SPLIT = 2;
+    /**
+     * 任务状态：拆句完成
+     */
+    private static final int STATUS_SPLIT_COMPLETE = 0;
+
+    /**
+     * 默认断句标准ID：大符号
+     */
+    private static final int DEFAULT_BREAKING_STANDARD_ID = 1;
 
     private final TaskMapper taskMapper;
     private final OriginalSentenceMapper originalSentenceMapper;
@@ -43,27 +51,37 @@ public class TaskServiceImpl implements TaskService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public TaskDetailDTO createTask(TaskCreateRequest request) {
+    public TaskCreateResponseDTO createTask(TaskCreateRequest request) {
+        // 参数校验
         ValidationUtil.notNull(request, "请求参数不能为空");
         String content = request.getContent();
         ValidationUtil.notBlank(content, "文本内容不能为空");
+        
+        // 字符数校验（使用 codePointCount 来正确计算中文字符）
         if (content.codePointCount(0, content.length()) > 10000) {
             throw new BusinessException(10400, "文本内容不能超过10000字");
         }
-        List<String> sentences = SentenceSplitter.split(content, request.getDelimiters());
+
+        // 拆句处理
+        String delimitersStr = request.getDelimitersAsString();
+        List<String> sentences = SentenceSplitter.split(content, delimitersStr);
         if (CollectionUtils.isEmpty(sentences)) {
             throw new BusinessException("未识别到有效内容，请检查文本");
         }
+
+        // 创建任务记录
         Task task = new Task();
         task.setContent(content);
         task.setCharCount(content.length());
-        task.setStatus(STATUS_SPLIT);
-        task.setBreakingStandardId(1);
+        task.setStatus(STATUS_SPLIT_COMPLETE);
+        task.setBreakingStandardId(DEFAULT_BREAKING_STANDARD_ID);
         task.setCharCountLimit(null);
+        task.setMergedAudioUrl(null);
+        task.setMergedAudioDuration(null);
         taskMapper.insert(task);
 
+        // 创建原始拆句记录
         List<OriginalSentence> originalSentences = new ArrayList<>();
-        List<BreakingSentence> breakingSentences = new ArrayList<>();
         int sequence = 1;
         for (String sentence : sentences) {
             OriginalSentence original = new OriginalSentence();
@@ -72,131 +90,65 @@ public class TaskServiceImpl implements TaskService {
             original.setCharCount(sentence.length());
             original.setSequence(sequence);
             originalSentences.add(original);
-
-            BreakingSentence breaking = new BreakingSentence();
-            breaking.setTaskId(task.getTaskId());
-            breaking.setContent(sentence);
-            breaking.setCharCount(sentence.length());
-            breaking.setSequence(sequence);
-            breaking.setSynthesisStatus(0);
-            breaking.setAudioUrl(null);
-            breaking.setAudioDuration(null);
-            breaking.setSsml(null);
-            breakingSentences.add(breaking);
             sequence++;
         }
         originalSentenceMapper.insertBatch(originalSentences);
+
+        // 查询已保存的原始拆句（获取生成的ID）
         List<OriginalSentence> persistedOriginals = originalSentenceMapper.selectByTaskId(task.getTaskId());
         if (persistedOriginals.size() != originalSentences.size()) {
             throw new BusinessException("保存原始拆句失败");
         }
-        for (int i = 0; i < persistedOriginals.size(); i++) {
-            OriginalSentence original = persistedOriginals.get(i);
-            BreakingSentence breaking = breakingSentences.get(i);
+
+        // 为每条原始拆句创建对应的断句记录
+        List<BreakingSentence> breakingSentences = new ArrayList<>();
+        for (OriginalSentence original : persistedOriginals) {
+            BreakingSentence breaking = new BreakingSentence();
+            breaking.setTaskId(task.getTaskId());
             breaking.setOriginalSentenceId(original.getOriginalSentenceId());
+            breaking.setContent(original.getContent());
+            breaking.setCharCount(original.getCharCount());
+            breaking.setSequence(original.getSequence());
+            breaking.setSynthesisStatus(0); // 未合成
+            breaking.setAudioUrl(null);
+            breaking.setAudioDuration(null);
+            breaking.setSsml(null);
+            breakingSentences.add(breaking);
         }
         breakingSentenceMapper.insertBatch(breakingSentences);
-        List<BreakingSentence> persistedBreaking = breakingSentenceMapper.selectByTaskId(task.getTaskId());
 
-        List<TaskSentenceDTO> sentenceDTOList = persistedBreaking.stream()
-                .map(this::toTaskSentenceDTO)
+        // 构建响应DTO
+        TaskCreateResponseDTO response = new TaskCreateResponseDTO();
+        response.setTaskId(task.getTaskId());
+        response.setContent(task.getContent());
+        response.setCharCount(task.getCharCount());
+        response.setStatus(task.getStatus());
+        response.setAudioUrl(task.getMergedAudioUrl());
+        response.setAudioDuration(task.getMergedAudioDuration());
+        response.setCreatedAt(task.getCreatedAt());
+        response.setUpdatedAt(task.getUpdatedAt());
+
+        // 转换原始拆句列表
+        List<OriginalSentenceDTO> originalSentenceDTOList = persistedOriginals.stream()
+                .map(this::toOriginalSentenceDTO)
                 .collect(Collectors.toList());
+        response.setOriginalSentenceList(originalSentenceDTOList);
 
-        TaskDetailDTO detail = toTaskDetailDTO(taskMapper.selectById(task.getTaskId()));
-        detail.setSentences(sentenceDTOList);
-        detail.setTotalSentences(sentenceDTOList.size());
-        return detail;
+        return response;
     }
 
-    @Override
-    public TaskDetailDTO getTaskDetail(Long taskId) {
-        Task task = taskMapper.selectById(taskId);
-        if (task == null) {
-            throw new BusinessException(10404, "任务不存在");
-        }
-        List<BreakingSentence> breakingSentences = breakingSentenceMapper.selectByTaskId(taskId);
-        TaskDetailDTO detail = toTaskDetailDTO(task);
-        detail.setBreakingSentences(
-                breakingSentences.stream().map(this::toBreakingSentenceDTO).collect(Collectors.toList()));
-        detail.setTotalSentences(detail.getBreakingSentences().size());
-        return detail;
-    }
-
-    @Override
-    public TaskListResponseDTO listTasks(Integer page, Integer pageSize, Integer status) {
-        int currentPage = (page == null || page < 1) ? 1 : page;
-        int size = (pageSize == null || pageSize < 1) ? 20 : pageSize;
-
-        int offset = (currentPage - 1) * size;
-        List<Task> tasks = taskMapper.selectList(status, offset, size);
-        long total = taskMapper.countByStatus(status);
-
-        List<TaskListItemDTO> list = tasks.stream().map(task -> {
-            TaskListItemDTO item = new TaskListItemDTO();
-            item.setTaskId(task.getTaskId());
-            item.setContent(preview(task.getContent()));
-            item.setCharCount(task.getCharCount());
-            item.setStatus(task.getStatus());
-            item.setTotalSentences(breakingSentenceMapper.countByTaskId(task.getTaskId()));
-            item.setCreatedAt(task.getCreatedAt());
-            item.setUpdatedAt(task.getUpdatedAt());
-            return item;
-        }).collect(Collectors.toList());
-
-        TaskListResponseDTO responseDTO = new TaskListResponseDTO();
-        responseDTO.setList(list);
-        responseDTO.setTotal(total);
-        responseDTO.setPage(currentPage);
-        responseDTO.setPageSize(size);
-        return responseDTO;
-    }
-
-    private TaskDetailDTO toTaskDetailDTO(Task task) {
-        TaskDetailDTO detail = new TaskDetailDTO();
-        detail.setTaskId(task.getTaskId());
-        detail.setContent(task.getContent());
-        detail.setCharCount(task.getCharCount());
-        detail.setStatus(task.getStatus());
-        detail.setMergedAudioUrl(task.getMergedAudioUrl());
-        detail.setMergedAudioDuration(task.getMergedAudioDuration());
-        detail.setSsml(null);
-        detail.setCreatedAt(task.getCreatedAt());
-        detail.setUpdatedAt(task.getUpdatedAt());
-        return detail;
-    }
-
-    private TaskSentenceDTO toTaskSentenceDTO(BreakingSentence breakingSentence) {
-        TaskSentenceDTO dto = new TaskSentenceDTO();
-        dto.setSentenceId(breakingSentence.getBreakingSentenceId());
-        dto.setParentId(breakingSentence.getOriginalSentenceId());
-        dto.setSequence(breakingSentence.getSequence());
-        dto.setCharCount(breakingSentence.getCharCount());
-        dto.setContent(breakingSentence.getContent());
-        dto.setAudioUrl(breakingSentence.getAudioUrl());
-        dto.setAudioDuration(breakingSentence.getAudioDuration());
-        dto.setSsml(breakingSentence.getSsml());
+    /**
+     * 将 OriginalSentence 转换为 OriginalSentenceDTO
+     */
+    private OriginalSentenceDTO toOriginalSentenceDTO(OriginalSentence original) {
+        OriginalSentenceDTO dto = new OriginalSentenceDTO();
+        dto.setOriginalSentenceId(original.getOriginalSentenceId());
+        dto.setTaskId(original.getTaskId());
+        dto.setContent(original.getContent());
+        dto.setCharCount(original.getCharCount());
+        dto.setSequence(original.getSequence());
+        dto.setCreatedAt(original.getCreatedAt());
         return dto;
     }
-
-    private BreakingSentenceDTO toBreakingSentenceDTO(BreakingSentence breakingSentence) {
-        BreakingSentenceDTO dto = new BreakingSentenceDTO();
-        dto.setBreakingSentenceId(breakingSentence.getBreakingSentenceId());
-        dto.setOriginalSentenceId(breakingSentence.getOriginalSentenceId());
-        dto.setSequence(breakingSentence.getSequence());
-        dto.setContent(breakingSentence.getContent());
-        dto.setSynthesisStatus(breakingSentence.getSynthesisStatus());
-        dto.setAudioUrl(breakingSentence.getAudioUrl());
-        dto.setAudioDuration(breakingSentence.getAudioDuration());
-        dto.setSsml(breakingSentence.getSsml());
-        return dto;
-    }
-
-    private String preview(String content) {
-        if (content == null) {
-            return null;
-        }
-        return content.length() <= 50 ? content : content.substring(0, 50) + "...";
-    }
-
 }
 
