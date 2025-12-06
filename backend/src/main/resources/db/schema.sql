@@ -56,7 +56,6 @@ CREATE TABLE IF NOT EXISTS `breaking_sentences` (
     INDEX `idx_original_sentence_id` (`original_sentence_id`),
     INDEX `idx_breaking_sequence` (`task_id`, `sequence`),
     INDEX `idx_synthesis_status` (`synthesis_status`),
-    INDEX `idx_job_id` (`job_id`),
     CONSTRAINT `fk_breaking_sentences_task`
         FOREIGN KEY (`task_id`) REFERENCES `tasks` (`task_id`)
         ON DELETE CASCADE,
@@ -111,7 +110,21 @@ CREATE TABLE IF NOT EXISTS `polyphonic_settings` (
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 7. 阅读规范表
+-- 7. 局部语速设置表
+CREATE TABLE IF NOT EXISTS `prosody_settings` (
+    `prosody_id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `breaking_sentence_id` BIGINT NOT NULL,
+    `begin_position` INT NOT NULL COMMENT '标签开始位置',
+    `end_position` INT NOT NULL COMMENT '标签结束位置',
+    `rate` INT NOT NULL COMMENT '语速：50表示0.5倍语速，100表示正常语速，200表示2倍语速。取值范围：50~200',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_prosody_breaking_sentence_id` (`breaking_sentence_id`),
+    CONSTRAINT `fk_prosody_breaking`
+        FOREIGN KEY (`breaking_sentence_id`) REFERENCES `breaking_sentences` (`breaking_sentence_id`)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8. 阅读规范表
 CREATE TABLE IF NOT EXISTS `reading_rules` (
     `rule_id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `task_id` BIGINT NULL,
@@ -128,7 +141,7 @@ CREATE TABLE IF NOT EXISTS `reading_rules` (
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 8. 阅读规范应用表
+-- 9. 阅读规范应用表
 CREATE TABLE IF NOT EXISTS `reading_rule_applications` (
     `application_id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `rule_id` BIGINT NOT NULL,
@@ -145,7 +158,7 @@ CREATE TABLE IF NOT EXISTS `reading_rule_applications` (
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 9. 音频合并记录表
+-- 10. 音频合并记录表
 CREATE TABLE IF NOT EXISTS `audio_merges` (
     `merge_id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `task_id` BIGINT NOT NULL,
@@ -162,7 +175,7 @@ CREATE TABLE IF NOT EXISTS `audio_merges` (
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 10. 音色配置表
+-- 11. 音色配置表
 CREATE TABLE IF NOT EXISTS `voice_configs` (
     `voice_id` VARCHAR(50) PRIMARY KEY,
     `voice_name` VARCHAR(100) NOT NULL,

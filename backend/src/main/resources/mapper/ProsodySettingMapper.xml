@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yunting.mapper.ProsodySettingMapper">
+
+    <resultMap id="ProsodySettingResultMap" type="com.yunting.model.ProsodySetting">
+        <id property="prosodyId" column="prosody_id"/>
+        <result property="breakingSentenceId" column="breaking_sentence_id"/>
+        <result property="beginPosition" column="begin_position"/>
+        <result property="endPosition" column="end_position"/>
+        <result property="rate" column="rate"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="selectByBreakingSentenceId" parameterType="long" resultMap="ProsodySettingResultMap">
+        SELECT *
+        FROM prosody_settings
+        WHERE breaking_sentence_id = #{breakingSentenceId}
+        ORDER BY begin_position ASC
+    </select>
+
+    <select id="selectByBreakingSentenceIds" resultMap="ProsodySettingResultMap">
+        SELECT *
+        FROM prosody_settings
+        WHERE breaking_sentence_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY breaking_sentence_id, begin_position ASC
+    </select>
+
+    <delete id="deleteByBreakingSentenceId" parameterType="long">
+        DELETE FROM prosody_settings WHERE breaking_sentence_id = #{breakingSentenceId}
+    </delete>
+
+    <insert id="insertBatch" parameterType="java.util.List">
+        INSERT INTO prosody_settings (breaking_sentence_id, begin_position, end_position, rate, created_at)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.breakingSentenceId}, #{item.beginPosition}, #{item.endPosition}, #{item.rate}, NOW())
+        </foreach>
+    </insert>
+
+</mapper>
+
