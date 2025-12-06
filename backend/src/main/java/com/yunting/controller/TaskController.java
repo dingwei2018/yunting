@@ -4,11 +4,14 @@ import com.yunting.common.ApiResponse;
 import com.yunting.common.ResponseUtil;
 import com.yunting.dto.task.TaskCreateRequest;
 import com.yunting.dto.task.TaskCreateResponseDTO;
+import com.yunting.dto.task.TaskDetailDTO;
 import com.yunting.service.TaskService;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -35,6 +38,19 @@ public class TaskController {
     @PostMapping("/create")
     public ApiResponse<TaskCreateResponseDTO> createTask(@Valid @RequestBody TaskCreateRequest request) {
         TaskCreateResponseDTO data = taskService.createTask(request);
+        return ResponseUtil.success(data);
+    }
+
+    /**
+     * 获取任务详情
+     * 返回任务详情以及任务下的拆句内容
+     *
+     * @param taskid 任务ID
+     * @return 任务详情
+     */
+    @GetMapping("/getDetail")
+    public ApiResponse<TaskDetailDTO> getTaskDetail(@RequestParam("taskid") Long taskid) {
+        TaskDetailDTO data = taskService.getTaskDetail(taskid);
         return ResponseUtil.success(data);
     }
 }

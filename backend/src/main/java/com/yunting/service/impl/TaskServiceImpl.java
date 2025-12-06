@@ -3,6 +3,7 @@ package com.yunting.service.impl;
 import com.yunting.dto.task.OriginalSentenceDTO;
 import com.yunting.dto.task.TaskCreateRequest;
 import com.yunting.dto.task.TaskCreateResponseDTO;
+import com.yunting.dto.task.TaskDetailDTO;
 import com.yunting.exception.BusinessException;
 import com.yunting.mapper.BreakingSentenceMapper;
 import com.yunting.mapper.OriginalSentenceMapper;
@@ -142,6 +143,41 @@ public class TaskServiceImpl implements TaskService {
         response.setOriginalSentenceList(originalSentenceDTOList);
 
         return response;
+    }
+
+    @Override
+    public TaskDetailDTO getTaskDetail(Long taskId) {
+        // 参数校验
+        ValidationUtil.notNull(taskId, "任务ID不能为空");
+        
+        // 查询任务
+        Task task = taskMapper.selectById(taskId);
+        if (task == null) {
+            throw new BusinessException("任务不存在");
+        }
+        
+        // 查询原始拆句列表
+        List<OriginalSentence> originalSentences = originalSentenceMapper.selectByTaskId(taskId);
+        
+        // 构建TaskDetailDTO
+        TaskDetailDTO detailDTO = new TaskDetailDTO();
+        detailDTO.setTaskId(task.getTaskId());
+        detailDTO.setContent(task.getContent());
+        detailDTO.setCharCount(task.getCharCount());
+        detailDTO.setStatus(task.getStatus());
+        // audioUrl 和 audioDuration 如果为 null，则设置为空值
+        detailDTO.setAudioUrl(task.getMergedAudioUrl() != null ? task.getMergedAudioUrl() : "");
+        detailDTO.setAudioDuration(task.getMergedAudioDuration() != null ? task.getMergedAudioDuration() : 0);
+        detailDTO.setCreatedAt(task.getCreatedAt());
+        detailDTO.setUpdatedAt(task.getUpdatedAt());
+        
+        // 转换原始拆句列表
+        List<OriginalSentenceDTO> originalSentenceDTOList = originalSentences.stream()
+                .map(this::toOriginalSentenceDTO)
+                .collect(Collectors.toList());
+        detailDTO.setOriginalSentenceList(originalSentenceDTOList);
+        
+        return detailDTO;
     }
 
     /**
