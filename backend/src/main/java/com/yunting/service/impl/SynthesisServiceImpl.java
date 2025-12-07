@@ -306,10 +306,12 @@ public class SynthesisServiceImpl implements SynthesisService {
                 synthesisSettingMapper.upsert(setting);
             }
 
-            // 3. 更新breakList到pause_settings表（先删除旧的，再插入新的）
+            // 3. 更新breakList和silenceList到pause_settings表（先删除旧的，再插入新的）
             pauseSettingMapper.deleteByBreakingSentenceId(breakingSentenceId);
+            List<PauseSetting> pauseSettings = new ArrayList<>();
+            
+            // 处理 breakList（type=1，停顿）
             if (!CollectionUtils.isEmpty(config.getBreakList())) {
-                List<PauseSetting> pauseSettings = new ArrayList<>();
                 for (SynthesisSetConfigRequest.BreakConfig breakConfig : config.getBreakList()) {
                     PauseSetting pauseSetting = new PauseSetting();
                     pauseSetting.setBreakingSentenceId(breakingSentenceId);
@@ -318,9 +320,22 @@ public class SynthesisServiceImpl implements SynthesisService {
                     pauseSetting.setType(1); // 1表示停顿
                     pauseSettings.add(pauseSetting);
                 }
-                if (!pauseSettings.isEmpty()) {
-                    pauseSettingMapper.insertBatch(pauseSettings);
+            }
+            
+            // 处理 silenceList（type=2，静音）
+            if (!CollectionUtils.isEmpty(config.getSilenceList())) {
+                for (SynthesisSetConfigRequest.SilenceConfig silenceConfig : config.getSilenceList()) {
+                    PauseSetting pauseSetting = new PauseSetting();
+                    pauseSetting.setBreakingSentenceId(breakingSentenceId);
+                    pauseSetting.setPosition(silenceConfig.getLocation());
+                    pauseSetting.setDuration(silenceConfig.getDuration());
+                    pauseSetting.setType(2); // 2表示静音
+                    pauseSettings.add(pauseSetting);
                 }
+            }
+            
+            if (!pauseSettings.isEmpty()) {
+                pauseSettingMapper.insertBatch(pauseSettings);
             }
 
             // 4. 更新phonemeList到polyphonic_settings表（先删除旧的，再插入新的）
@@ -385,6 +400,7 @@ public class SynthesisServiceImpl implements SynthesisService {
                 ssmlConfig.setBreakList(config.getBreakList());
                 ssmlConfig.setPhonemeList(config.getPhonemeList());
                 ssmlConfig.setProsodyList(config.getProsodyList());
+                ssmlConfig.setSilenceList(config.getSilenceList());
                 
                 String ssml = com.yunting.util.SsmlRenderer.renderFromConfig(ssmlConfig);
                 if (StringUtils.hasText(ssml)) {

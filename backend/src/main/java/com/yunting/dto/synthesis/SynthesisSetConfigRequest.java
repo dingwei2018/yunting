@@ -46,6 +46,7 @@ public class SynthesisSetConfigRequest {
         private List<BreakConfig> breakList;
         private List<PhonemeConfig> phonemeList;
         private List<ProsodyConfig> prosodyList;
+        private List<SilenceConfig> silenceList;
 
         public Long getBreakingSentenceId() {
             return breakingSentenceId;
@@ -109,6 +110,14 @@ public class SynthesisSetConfigRequest {
 
         public void setProsodyList(List<ProsodyConfig> prosodyList) {
             this.prosodyList = prosodyList;
+        }
+
+        public List<SilenceConfig> getSilenceList() {
+            return silenceList;
+        }
+
+        public void setSilenceList(List<SilenceConfig> silenceList) {
+            this.silenceList = silenceList;
         }
     }
 
@@ -190,6 +199,30 @@ public class SynthesisSetConfigRequest {
 
         public void setEnd(Integer end) {
             this.end = end;
+        }
+    }
+
+    /**
+     * 静音配置
+     */
+    public static class SilenceConfig {
+        private Integer location;
+        private Integer duration;
+
+        public Integer getLocation() {
+            return location;
+        }
+
+        public void setLocation(Integer location) {
+            this.location = location;
+        }
+
+        public Integer getDuration() {
+            return duration;
+        }
+
+        public void setDuration(Integer duration) {
+            this.duration = duration;
         }
     }
 }

@@ -368,6 +368,19 @@ public final class SsmlRenderer {
             }
         }
 
+        // 添加 silence 标记（也使用 break 标签）
+        if (!CollectionUtils.isEmpty(config.getSilenceList())) {
+            for (SynthesisSetConfigRequest.SilenceConfig silenceConfig : config.getSilenceList()) {
+                if (silenceConfig.getLocation() != null) {
+                    // 将 SilenceConfig 转换为 BreakConfig 格式，以便使用相同的 buildBreakTagFromConfig 方法
+                    SynthesisSetConfigRequest.BreakConfig breakConfig = new SynthesisSetConfigRequest.BreakConfig();
+                    breakConfig.setLocation(silenceConfig.getLocation());
+                    breakConfig.setDuration(silenceConfig.getDuration());
+                    marks.add(new Mark(silenceConfig.getLocation(), MarkType.BREAK, breakConfig));
+                }
+            }
+        }
+
         // 添加 phoneme 标记
         if (!CollectionUtils.isEmpty(config.getPhonemeList())) {
             for (SynthesisSetConfigRequest.PhonemeConfig phonemeConfig : config.getPhonemeList()) {
