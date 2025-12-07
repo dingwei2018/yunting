@@ -1,16 +1,14 @@
 package com.yunting.dto.audio;
 
-import java.util.List;
-
 public class AudioMergeRequest {
-    private List<Long> sentenceIds;
+    private Long taskId;
 
-    public List<Long> getSentenceIds() {
-        return sentenceIds;
+    public Long getTaskId() {
+        return taskId;
     }
 
-    public void setSentenceIds(List<Long> sentenceIds) {
-        this.sentenceIds = sentenceIds;
+    public void setTaskId(Long taskId) {
+        this.taskId = taskId;
     }
 }
 

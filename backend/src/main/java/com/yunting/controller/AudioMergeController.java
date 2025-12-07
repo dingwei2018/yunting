@@ -5,15 +5,10 @@ import com.yunting.common.ResponseUtil;
 import com.yunting.dto.audio.AudioMergeRequest;
 import com.yunting.dto.audio.AudioMergeResponseDTO;
 import com.yunting.service.AudioMergeService;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/merge")
 public class AudioMergeController {
 
     private final AudioMergeService audioMergeService;
@@ -22,10 +17,9 @@ public class AudioMergeController {
         this.audioMergeService = audioMergeService;
     }
 
-    @PostMapping("/tasks/audio/merge")
-    public ApiResponse<AudioMergeResponseDTO> mergeAudio(@RequestParam("taskid") Long taskId,
-                                                         @RequestBody(required = false) AudioMergeRequest request) {
-        AudioMergeResponseDTO dto = audioMergeService.mergeAudio(taskId, request);
+    @PostMapping("/audio")
+    public ApiResponse<AudioMergeResponseDTO> mergeAudio(@RequestBody AudioMergeRequest request) {
+        AudioMergeResponseDTO dto = audioMergeService.mergeAudio(request.getTaskId(), request);
         return ResponseUtil.success(dto);
     }
 

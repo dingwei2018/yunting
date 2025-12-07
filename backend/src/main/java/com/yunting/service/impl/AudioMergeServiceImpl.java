@@ -82,22 +82,11 @@ public class AudioMergeServiceImpl implements AudioMergeService {
             throw new BusinessException(10404, "任务暂无断句");
         }
 
-        List<Long> sentenceIds = request != null ? request.getSentenceIds() : null;
-        List<BreakingSentence> toMerge;
-        if (!CollectionUtils.isEmpty(sentenceIds)) {
-            toMerge = candidates.stream()
-                    .filter(bs -> sentenceIds.contains(bs.getBreakingSentenceId()))
-                    .sorted(Comparator.comparing(BreakingSentence::getSequence))
-                    .collect(Collectors.toList());
-            if (toMerge.size() != sentenceIds.size()) {
-                throw new BusinessException(10404, "部分断句不存在");
-            }
-        } else {
-            toMerge = candidates.stream()
-                    .filter(bs -> bs.getAudioUrl() != null && StringUtils.hasText(bs.getAudioUrl()))
-                    .sorted(Comparator.comparing(BreakingSentence::getSequence))
-                    .collect(Collectors.toList());
-        }
+        // 合并所有有音频URL的断句
+        List<BreakingSentence> toMerge = candidates.stream()
+                .filter(bs -> bs.getAudioUrl() != null && StringUtils.hasText(bs.getAudioUrl()))
+                .sorted(Comparator.comparing(BreakingSentence::getSequence))
+                .collect(Collectors.toList());
 
         if (toMerge.isEmpty()) {
             throw new BusinessException(10404, "没有可合并的断句");
@@ -121,8 +110,7 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         // 发送消息到 RocketMQ，异步处理
         AudioMergeMessage mergeMessage = new AudioMergeMessage(
             taskId, 
-            audioMerge.getMergeId(), 
-            sentenceIds
+            audioMerge.getMergeId()
         );
         
         boolean success = rocketMQAudioMergeService.sendAudioMergeMessage(mergeMessage);
@@ -140,7 +128,6 @@ public class AudioMergeServiceImpl implements AudioMergeService {
     public void processAudioMerge(AudioMergeMessage mergeMessage) {
         Long taskId = mergeMessage.getTaskId();
         Long mergeId = mergeMessage.getMergeId();
-        List<Long> sentenceIds = mergeMessage.getSentenceIds();
         
         logger.info("开始处理音频合并，taskId: {}, mergeId: {}", taskId, mergeId);
         
@@ -167,19 +154,11 @@ public class AudioMergeServiceImpl implements AudioMergeService {
             return;
         }
 
-        // 筛选要合并的断句
-        List<BreakingSentence> toMerge;
-        if (!CollectionUtils.isEmpty(sentenceIds)) {
-            toMerge = candidates.stream()
-                    .filter(bs -> sentenceIds.contains(bs.getBreakingSentenceId()))
-                    .sorted(Comparator.comparing(BreakingSentence::getSequence))
-                    .collect(Collectors.toList());
-        } else {
-            toMerge = candidates.stream()
-                    .filter(bs -> bs.getAudioUrl() != null && StringUtils.hasText(bs.getAudioUrl()))
-                    .sorted(Comparator.comparing(BreakingSentence::getSequence))
-                    .collect(Collectors.toList());
-        }
+        // 合并所有有音频URL的断句
+        List<BreakingSentence> toMerge = candidates.stream()
+                .filter(bs -> bs.getAudioUrl() != null && StringUtils.hasText(bs.getAudioUrl()))
+                .sorted(Comparator.comparing(BreakingSentence::getSequence))
+                .collect(Collectors.toList());
 
         if (toMerge.isEmpty()) {
             logger.error("没有可合并的断句，taskId: {}", taskId);
