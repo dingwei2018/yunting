@@ -5,6 +5,7 @@ public class VoiceConfigDTO {
     private String voiceName;
     private String voiceType;
     private String language;
+    private String avatarUrl;
     private Integer isRecommended;
     private Integer sortOrder;
 
@@ -38,6 +39,14 @@ public class VoiceConfigDTO {
 
     public void setLanguage(String language) {
         this.language = language;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 
     public Integer getIsRecommended() {

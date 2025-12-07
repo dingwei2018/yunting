@@ -181,6 +181,7 @@ CREATE TABLE IF NOT EXISTS `voice_configs` (
     `voice_name` VARCHAR(100) NOT NULL,
     `voice_type` VARCHAR(20) NOT NULL,
     `language` VARCHAR(10) NOT NULL,
+    `avatar_url` VARCHAR(500) NULL,
     `is_recommended` TINYINT NOT NULL DEFAULT 0,
     `sort_order` INT NOT NULL DEFAULT 0,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
