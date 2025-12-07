@@ -44,6 +44,9 @@ import org.slf4j.LoggerFactory;
 public class SynthesisServiceImpl implements SynthesisService {
 
     private static final Logger logger = LoggerFactory.getLogger(SynthesisServiceImpl.class);
+    
+    // 默认 voiceId
+    private static final String DEFAULT_VOICE_ID = "c41f12c125f24c834ed3ae7c1fdae456";
 
     private final BreakingSentenceMapper breakingSentenceMapper;
     private final TaskMapper taskMapper;
@@ -141,37 +144,62 @@ public class SynthesisServiceImpl implements SynthesisService {
 
             // 4.1 检查 volume 和 speechRate 是否为 0，如果是则设置默认值并更新到数据库
             boolean needUpdateSetting = false;
+            
+            // 检查 volume 是否为 0，如果是则设置为默认值 140
             if (volume != null && volume == 0) {
                 volume = 140; // 默认值
                 needUpdateSetting = true;
             }
+            
+            // 检查 speechRate 是否为 0，如果是则设置为默认值 100
             if (speechRate != null && speechRate == 0) {
                 speechRate = 100; // 默认值
+                needUpdateSetting = true;
+            }
+            
+            // 如果表中没有记录，也需要创建一条带默认值的记录
+            if (setting == null) {
                 needUpdateSetting = true;
             }
 
             // 如果需要更新，将默认值保存到 synthesis_settings 表
             if (needUpdateSetting) {
                 if (setting == null) {
+                    // 如果表中没有记录，需要插入新记录
                     setting = new SynthesisSetting();
                     setting.setBreakingSentenceId(breakingSentenceId);
                 }
-                if (volume != null && volume == 140) {
-                    setting.setVolume(140);
+                
+                // 设置 volume 的默认值（如果为 null 或 0）
+                if (volume == null || volume == 0) {
+                    volume = 140;
                 }
-                if (speechRate != null && speechRate == 100) {
-                    setting.setSpeechRate(100);
+                setting.setVolume(volume);
+                
+                // 设置 speechRate 的默认值（如果为 null 或 0）
+                if (speechRate == null || speechRate == 0) {
+                    speechRate = 100;
                 }
-                // 保留原有的其他字段
-                if (setting.getVoiceId() == null && voiceId != null) {
-                    setting.setVoiceId(voiceId);
+                setting.setSpeechRate(speechRate);
+                
+                // 设置 voiceId（如果为 null，使用默认值）
+                if (setting.getVoiceId() == null || !StringUtils.hasText(setting.getVoiceId())) {
+                    String finalVoiceId = (voiceId != null && StringUtils.hasText(voiceId)) ? voiceId : DEFAULT_VOICE_ID;
+                    setting.setVoiceId(finalVoiceId);
+                    // 同时更新局部变量，用于后续请求华为云
+                    voiceId = finalVoiceId;
                 }
-                if (setting.getPitch() == null && pitch != null) {
-                    setting.setPitch(pitch);
+                
+                // 设置 pitch（如果为 null，使用默认值 0，因为数据库字段不允许 null）
+                if (pitch == null) {
+                    pitch = 0;
                 }
+                setting.setPitch(pitch);
+                
+                // 更新或插入记录
                 synthesisSettingMapper.upsert(setting);
-                logger.info("更新默认值到synthesis_settings表，breakingSentenceId: {}, volume: {}, speechRate: {}", 
-                        breakingSentenceId, volume, speechRate);
+                logger.info("更新默认值到synthesis_settings表，breakingSentenceId: {}, volume: {}, speechRate: {}, voiceId: {}", 
+                        breakingSentenceId, setting.getVolume(), setting.getSpeechRate(), setting.getVoiceId());
             }
 
             // 5. 构建TTS合成请求消息
