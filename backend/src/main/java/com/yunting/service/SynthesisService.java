@@ -1,24 +1,10 @@
 package com.yunting.service;
 
-import com.yunting.dto.synthesis.BreakingSentenceSynthesisResponseDTO;
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
-import com.yunting.dto.synthesis.TaskSynthesisBatchResponseDTO;
-import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
-
-import java.util.List;
 
 public interface SynthesisService {
 
     String synthesize(Long breakingSentenceId);
-
-    TaskSynthesisBatchResponseDTO synthesizeBatch(Long taskId,
-                                                  String voiceId,
-                                                  Integer speechRate,
-                                                  Integer volume,
-                                                  Integer pitch,
-                                                  List<Long> breakingSentenceIds);
-
-    TaskSynthesisStatusDTO getTaskSynthesisStatus(Long taskId);
 
     /**
      * 设置拆句合成参数
