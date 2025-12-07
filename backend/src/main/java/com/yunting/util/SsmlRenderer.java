@@ -1,6 +1,7 @@
 package com.yunting.util;
 
 import com.yunting.dto.breaking.request.*;
+import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.model.SynthesisSetting;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -343,6 +344,163 @@ public final class SsmlRenderer {
         }
     }
 
+    /**
+     * 从 SynthesisSetConfigRequest.BreakingSentenceConfig 生成 SSML
+     * 支持 breakList、phonemeList 和 prosodyList
+     * 注意：voiceId、volume、speed 不生成标签，只用于数据库存储
+     */
+    public static String renderFromConfig(SynthesisSetConfigRequest.BreakingSentenceConfig config) {
+        if (config == null || !StringUtils.hasText(config.getContent())) {
+            return null;
+        }
+
+        String content = config.getContent();
+
+        // 构建标记列表（按位置排序）
+        List<Mark> marks = new ArrayList<>();
+
+        // 添加 break 标记
+        if (!CollectionUtils.isEmpty(config.getBreakList())) {
+            for (SynthesisSetConfigRequest.BreakConfig breakConfig : config.getBreakList()) {
+                if (breakConfig.getLocation() != null) {
+                    marks.add(new Mark(breakConfig.getLocation(), MarkType.BREAK, breakConfig));
+                }
+            }
+        }
+
+        // 添加 phoneme 标记
+        if (!CollectionUtils.isEmpty(config.getPhonemeList())) {
+            for (SynthesisSetConfigRequest.PhonemeConfig phonemeConfig : config.getPhonemeList()) {
+                if (phonemeConfig.getLocation() != null && StringUtils.hasText(phonemeConfig.getPh())) {
+                    marks.add(new Mark(phonemeConfig.getLocation(), MarkType.PHONEME_CONFIG, phonemeConfig));
+                }
+            }
+        }
+
+        // prosody 标记单独处理，不添加到 marks 列表
+
+        // 按位置排序
+        marks.sort(Comparator.comparingInt(Mark::getPosition));
+
+        // 构建 SSML
+        StringBuilder ssml = new StringBuilder();
+        ssml.append("<speak>");
+
+        // 构建 prosody 范围映射（用于跟踪哪些位置在 prosody 范围内）
+        List<ProsodyRange> prosodyRanges = new ArrayList<>();
+        if (!CollectionUtils.isEmpty(config.getProsodyList())) {
+            for (SynthesisSetConfigRequest.ProsodyConfig prosodyConfig : config.getProsodyList()) {
+                if (prosodyConfig.getBegin() != null && prosodyConfig.getEnd() != null 
+                        && prosodyConfig.getRate() != null
+                        && prosodyConfig.getBegin() < prosodyConfig.getEnd()) {
+                    prosodyRanges.add(new ProsodyRange(prosodyConfig.getBegin(), prosodyConfig.getEnd(), prosodyConfig.getRate()));
+                }
+            }
+        }
+        prosodyRanges.sort(Comparator.comparingInt(ProsodyRange::getBegin));
+
+        // 处理文本和标记
+        int[] currentPos = {0};  // 使用数组包装，使其可以在 lambda 中修改
+        List<ProsodyRange> activeProsodyRanges = new ArrayList<>();  // 当前激活的 prosody 范围栈
+        
+        // 辅助方法：更新 prosody 标签状态
+        Runnable updateProsodyTags = () -> {
+            // 关闭已经结束的 prosody 标签
+            List<ProsodyRange> toRemove = new ArrayList<>();
+            for (ProsodyRange range : activeProsodyRanges) {
+                if (currentPos[0] >= range.getEnd()) {
+                    ssml.append("</prosody>");
+                    toRemove.add(range);
+                }
+            }
+            activeProsodyRanges.removeAll(toRemove);
+            
+            // 打开新的 prosody 标签
+            for (ProsodyRange range : prosodyRanges) {
+                if (currentPos[0] >= range.getBegin() && currentPos[0] < range.getEnd()) {
+                    // 检查是否已经打开
+                    boolean alreadyOpen = activeProsodyRanges.stream()
+                            .anyMatch(r -> r.getBegin() == range.getBegin() && r.getEnd() == range.getEnd());
+                    if (!alreadyOpen) {
+                        ssml.append("<prosody rate=\"").append(range.getRate()).append("\">");
+                        activeProsodyRanges.add(range);
+                    }
+                }
+            }
+        };
+        
+        for (Mark mark : marks) {
+            int markPos = mark.getPosition();
+
+            // 处理标记前的文本
+            if (markPos > currentPos[0] && markPos <= content.length()) {
+                // 逐字符处理，以便正确管理 prosody 标签
+                for (int i = currentPos[0]; i < markPos; i++) {
+                    updateProsodyTags.run();
+                    ssml.append(escape(String.valueOf(content.charAt(i))));
+                    currentPos[0] = i + 1;
+                }
+            }
+
+            // 更新 prosody 标签状态到标记位置
+            currentPos[0] = markPos;
+            updateProsodyTags.run();
+
+            // 添加标记
+            switch (mark.getType()) {
+                case BREAK:
+                    ssml.append(buildBreakTagFromConfig((SynthesisSetConfigRequest.BreakConfig) mark.getData()));
+                    // break 不占用文本位置，currentPos 保持不变
+                    break;
+                case PHONEME_CONFIG:
+                    ssml.append(buildPhonemeTagFromConfig((SynthesisSetConfigRequest.PhonemeConfig) mark.getData(), content));
+                    // phoneme 只标记单个字符
+                    currentPos[0] = markPos + 1;
+                    break;
+            }
+        }
+
+        // 处理剩余文本
+        if (currentPos[0] < content.length()) {
+            for (int i = currentPos[0]; i < content.length(); i++) {
+                updateProsodyTags.run();
+                ssml.append(escape(String.valueOf(content.charAt(i))));
+                currentPos[0] = i + 1;
+            }
+        }
+
+        // 关闭所有剩余的 prosody 标签（按相反顺序关闭，以支持嵌套）
+        for (int i = activeProsodyRanges.size() - 1; i >= 0; i--) {
+            ssml.append("</prosody>");
+        }
+
+        ssml.append("</speak>");
+
+        return ssml.toString();
+    }
+
+    private static String buildBreakTagFromConfig(SynthesisSetConfigRequest.BreakConfig breakConfig) {
+        StringBuilder tag = new StringBuilder("<break");
+        if (breakConfig.getDuration() != null && breakConfig.getDuration() > 0) {
+            tag.append(" time=\"").append(breakConfig.getDuration()).append("ms\"");
+        }
+        tag.append("/>");
+        return tag.toString();
+    }
+
+    private static String buildPhonemeTagFromConfig(SynthesisSetConfigRequest.PhonemeConfig phonemeConfig, String content) {
+        if (phonemeConfig.getLocation() == null || phonemeConfig.getLocation() >= content.length()) {
+            return "";
+        }
+        String character = content.substring(phonemeConfig.getLocation(), 
+                Math.min(phonemeConfig.getLocation() + 1, content.length()));
+        String pronunciation = phonemeConfig.getPh();
+        if (!StringUtils.hasText(pronunciation)) {
+            return escape(character);
+        }
+        return "<phoneme ph=\"" + escape(pronunciation) + "\">" + escape(character) + "</phoneme>";
+    }
+
     private static String escape(String text) {
         if (text == null) {
             return "";
@@ -360,11 +518,13 @@ public final class SsmlRenderer {
     private enum MarkType {
         BREAK,
         PHONEME,
+        PHONEME_CONFIG,  // 用于 SynthesisSetConfigRequest 的 phoneme
         SAY_AS,
         SUB,
         WORD,
         EMOTION,
-        INSERT_ACTION
+        INSERT_ACTION,
+        PROSODY  // 用于局部语速
     }
 
     /**
@@ -391,6 +551,33 @@ public final class SsmlRenderer {
 
         public Object getData() {
             return data;
+        }
+    }
+
+    /**
+     * Prosody 范围类
+     */
+    private static class ProsodyRange {
+        private final int begin;
+        private final int end;
+        private final int rate;
+
+        public ProsodyRange(int begin, int end, int rate) {
+            this.begin = begin;
+            this.end = end;
+            this.rate = rate;
+        }
+
+        public int getBegin() {
+            return begin;
+        }
+
+        public int getEnd() {
+            return end;
+        }
+
+        public int getRate() {
+            return rate;
         }
     }
 }

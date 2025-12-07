@@ -409,6 +409,28 @@ public class SynthesisServiceImpl implements SynthesisService {
                     prosodySettingMapper.insertBatch(prosodySettings);
                 }
             }
+
+            // 6. 生成 SSML 并更新到 breaking_sentences 表
+            // 获取最终的 content（可能已经更新）
+            BreakingSentence finalSentence = breakingSentenceMapper.selectById(breakingSentenceId);
+            String finalContent = finalSentence != null ? finalSentence.getContent() : config.getContent();
+            
+            if (StringUtils.hasText(finalContent)) {
+                // 创建一个临时的 config 对象，使用最新的 content
+                SynthesisSetConfigRequest.BreakingSentenceConfig ssmlConfig = new SynthesisSetConfigRequest.BreakingSentenceConfig();
+                ssmlConfig.setContent(finalContent);
+                ssmlConfig.setVoiceId(config.getVoiceId());
+                ssmlConfig.setSpeed(config.getSpeed());
+                ssmlConfig.setVolume(config.getVolume());
+                ssmlConfig.setBreakList(config.getBreakList());
+                ssmlConfig.setPhonemeList(config.getPhonemeList());
+                ssmlConfig.setProsodyList(config.getProsodyList());
+                
+                String ssml = com.yunting.util.SsmlRenderer.renderFromConfig(ssmlConfig);
+                if (StringUtils.hasText(ssml)) {
+                    breakingSentenceMapper.updateSsml(breakingSentenceId, ssml);
+                }
+            }
         }
     }
 
