@@ -26,5 +26,16 @@
         WHERE task_id = #{taskId}
         ORDER BY sequence ASC
     </select>
+
+    <select id="selectPageByTaskId" resultMap="OriginalSentenceResultMap">
+        SELECT * FROM original_sentences
+        WHERE task_id = #{taskId}
+        ORDER BY sequence ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByTaskId" parameterType="long" resultType="long">
+        SELECT COUNT(1) FROM original_sentences WHERE task_id = #{taskId}
+    </select>
 </mapper>
 
