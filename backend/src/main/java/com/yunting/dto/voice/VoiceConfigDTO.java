@@ -1,13 +1,15 @@
 package com.yunting.dto.voice;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class VoiceConfigDTO {
     private String voiceId;
     private String voiceName;
     private String voiceType;
-    private String language;
-    private String avatarUrl;
-    private Integer isRecommended;
     private Integer sortOrder;
+    
+    @JsonProperty("header_url")
+    private String headerUrl;
 
     public String getVoiceId() {
         return voiceId;
@@ -33,36 +35,20 @@ public class VoiceConfigDTO {
         this.voiceType = voiceType;
     }
 
-    public String getLanguage() {
-        return language;
-    }
-
-    public void setLanguage(String language) {
-        this.language = language;
-    }
-
-    public String getAvatarUrl() {
-        return avatarUrl;
-    }
-
-    public void setAvatarUrl(String avatarUrl) {
-        this.avatarUrl = avatarUrl;
-    }
-
-    public Integer getIsRecommended() {
-        return isRecommended;
-    }
-
-    public void setIsRecommended(Integer isRecommended) {
-        this.isRecommended = isRecommended;
-    }
-
     public Integer getSortOrder() {
         return sortOrder;
     }
 
     public void setSortOrder(Integer sortOrder) {
         this.sortOrder = sortOrder;
+    }
+
+    public String getHeaderUrl() {
+        return headerUrl;
+    }
+
+    public void setHeaderUrl(String headerUrl) {
+        this.headerUrl = headerUrl;
     }
 }
 

@@ -6,7 +6,6 @@ import com.yunting.mapper.VoiceConfigMapper;
 import com.yunting.model.VoiceConfig;
 import com.yunting.service.VoiceConfigService;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -21,8 +20,8 @@ public class VoiceConfigServiceImpl implements VoiceConfigService {
     }
 
     @Override
-    public VoiceConfigListResponseDTO getVoiceConfigs(Integer isRecommended, String language) {
-        List<VoiceConfig> configs = voiceConfigMapper.selectList(isRecommended, StringUtils.hasText(language) ? language : null);
+    public VoiceConfigListResponseDTO getVoiceConfigs() {
+        List<VoiceConfig> configs = voiceConfigMapper.selectList(null, null);
         VoiceConfigListResponseDTO responseDTO = new VoiceConfigListResponseDTO();
         responseDTO.setList(configs.stream().map(this::toDTO).collect(Collectors.toList()));
         return responseDTO;
@@ -33,9 +32,8 @@ public class VoiceConfigServiceImpl implements VoiceConfigService {
         dto.setVoiceId(config.getVoiceId());
         dto.setVoiceName(config.getVoiceName());
         dto.setVoiceType(config.getVoiceType());
-        dto.setLanguage(config.getLanguage());
-        dto.setIsRecommended(config.getIsRecommended());
         dto.setSortOrder(config.getSortOrder());
+        dto.setHeaderUrl(config.getAvatarUrl());
         return dto;
     }
 }

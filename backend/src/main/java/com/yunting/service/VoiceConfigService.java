@@ -4,7 +4,7 @@ import com.yunting.dto.voice.VoiceConfigListResponseDTO;
 
 public interface VoiceConfigService {
 
-    VoiceConfigListResponseDTO getVoiceConfigs(Integer isRecommended, String language);
+    VoiceConfigListResponseDTO getVoiceConfigs();
 }
 
 
