@@ -6,6 +6,8 @@ public interface SynthesisService {
 
     String synthesize(Long breakingSentenceId);
 
+    String synthesizeOriginalSentence(Long originalSentenceId);
+
     /**
      * 设置拆句合成参数
      * 

@@ -88,6 +88,12 @@
         ORDER BY sequence ASC
     </select>
 
+    <select id="selectByOriginalSentenceId" parameterType="long" resultMap="BreakingSentenceResultMap">
+        SELECT * FROM breaking_sentences
+        WHERE original_sentence_id = #{originalSentenceId}
+        ORDER BY sequence ASC
+    </select>
+
     <update id="updateSynthesisInfo">
         UPDATE breaking_sentences
         SET synthesis_status = #{status},

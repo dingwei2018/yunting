@@ -29,6 +29,8 @@ public interface BreakingSentenceMapper {
 
     List<BreakingSentence> selectPendingByTaskId(@Param("taskId") Long taskId);
 
+    List<BreakingSentence> selectByOriginalSentenceId(@Param("originalSentenceId") Long originalSentenceId);
+
     int updateSynthesisInfo(@Param("breakingSentenceId") Long breakingSentenceId,
                             @Param("status") int status,
                             @Param("audioUrl") String audioUrl,

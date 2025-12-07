@@ -4,6 +4,7 @@ import com.yunting.common.ApiResponse;
 import com.yunting.common.ResponseUtil;
 import com.yunting.util.ValidationUtil;
 import com.yunting.dto.synthesis.SynthesisBreakingSentenceRequest;
+import com.yunting.dto.synthesis.SynthesisOriginalSentenceRequest;
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
 import com.yunting.service.RocketMQTtsCallbackService;
@@ -35,6 +36,18 @@ public class SynthesisController {
             @RequestBody SynthesisBreakingSentenceRequest request) {
         ValidationUtil.notNull(request.getBreakingSentenceId(), "breakingSentenceId不能为空");
         String status = synthesisService.synthesize(request.getBreakingSentenceId());
+        return ResponseUtil.success(status);
+    }
+
+    /**
+     * 合成拆句
+     * 合成或重新合成拆句下的所有断句
+     */
+    @PostMapping("/originalSentence")
+    public ApiResponse<String> synthesizeOriginalSentence(
+            @RequestBody SynthesisOriginalSentenceRequest request) {
+        ValidationUtil.notNull(request.getOriginalSentenceId(), "originalSentenceId不能为空");
+        String status = synthesisService.synthesizeOriginalSentence(request.getOriginalSentenceId());
         return ResponseUtil.success(status);
     }
 
