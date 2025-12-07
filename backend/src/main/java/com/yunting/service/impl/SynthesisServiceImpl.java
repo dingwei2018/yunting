@@ -118,9 +118,9 @@ public class SynthesisServiceImpl implements SynthesisService {
                 return "合成失败";
             }
 
-            // 3. 验证 SSML 是否存在
-            if (!StringUtils.hasText(sentence.getSsml())) {
-                logger.warn("断句的SSML内容为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
+            // 3. 验证 content 是否存在（SSML 可以为空，会在 Consumer 中使用 content）
+            if (!StringUtils.hasText(sentence.getContent()) && !StringUtils.hasText(sentence.getSsml())) {
+                logger.warn("断句的SSML和content都为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
                 breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
                 return "合成失败";
             }
@@ -137,6 +137,41 @@ public class SynthesisServiceImpl implements SynthesisService {
                 speechRate = setting.getSpeechRate();
                 volume = setting.getVolume();
                 pitch = setting.getPitch();
+            }
+
+            // 4.1 检查 volume 和 speechRate 是否为 0，如果是则设置默认值并更新到数据库
+            boolean needUpdateSetting = false;
+            if (volume != null && volume == 0) {
+                volume = 140; // 默认值
+                needUpdateSetting = true;
+            }
+            if (speechRate != null && speechRate == 0) {
+                speechRate = 100; // 默认值
+                needUpdateSetting = true;
+            }
+
+            // 如果需要更新，将默认值保存到 synthesis_settings 表
+            if (needUpdateSetting) {
+                if (setting == null) {
+                    setting = new SynthesisSetting();
+                    setting.setBreakingSentenceId(breakingSentenceId);
+                }
+                if (volume != null && volume == 140) {
+                    setting.setVolume(140);
+                }
+                if (speechRate != null && speechRate == 100) {
+                    setting.setSpeechRate(100);
+                }
+                // 保留原有的其他字段
+                if (setting.getVoiceId() == null && voiceId != null) {
+                    setting.setVoiceId(voiceId);
+                }
+                if (setting.getPitch() == null && pitch != null) {
+                    setting.setPitch(pitch);
+                }
+                synthesisSettingMapper.upsert(setting);
+                logger.info("更新默认值到synthesis_settings表，breakingSentenceId: {}, volume: {}, speechRate: {}", 
+                        breakingSentenceId, volume, speechRate);
             }
 
             // 5. 构建TTS合成请求消息

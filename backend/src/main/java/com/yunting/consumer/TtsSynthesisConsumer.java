@@ -13,6 +13,7 @@ import com.yunting.config.RocketMQConfig;
 import com.yunting.dto.synthesis.TtsSynthesisRequest;
 import com.yunting.exception.BusinessException;
 import com.yunting.mapper.BreakingSentenceMapper;
+import com.yunting.model.BreakingSentence;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.apache.rocketmq.client.apis.ClientConfiguration;
@@ -203,8 +204,22 @@ public class TtsSynthesisConsumer {
             CreateAsyncTtsJobRequest ttsRequest = new CreateAsyncTtsJobRequest();
             CreateAsyncTtsJobRequestBody body = new CreateAsyncTtsJobRequestBody();
             
-            // 使用 SSML 字段
-            body.withText(request.getSsml())
+            // 获取文本内容：如果 SSML 为空，使用 content 字段
+            String textContent = request.getSsml();
+            if (!StringUtils.hasText(textContent)) {
+                BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
+                if (sentence != null && StringUtils.hasText(sentence.getContent())) {
+                    textContent = sentence.getContent();
+                    logger.info("SSML为空，使用content字段，breakingSentenceId: {}", breakingSentenceId);
+                } else {
+                    logger.warn("SSML和content都为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
+                    breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+                    return;
+                }
+            }
+            
+            // 使用文本内容（SSML 或 content）
+            body.withText(textContent)
                     .withVoiceAssetId(request.getVoiceId())
                     .withSpeed(request.getSpeechRate())
                     .withVolume(request.getVolume())

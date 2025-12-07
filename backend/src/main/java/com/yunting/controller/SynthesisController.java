@@ -69,7 +69,7 @@ public class SynthesisController {
      * @param callbackRequest 回调请求体，包含任务状态、job_id、音频下载URL等信息
      * @return 处理结果
      */
-    @PostMapping("/synthesis/callback")
+    @PostMapping("/callback")
     public ApiResponse<String> handleTtsCallback(@RequestBody TtsCallbackRequest callbackRequest) {
         try {
             // 发送消息到RocketMQ，而不是直接处理
