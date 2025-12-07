@@ -1,6 +1,7 @@
 package com.yunting.service;
 
 import com.yunting.dto.synthesis.BreakingSentenceSynthesisResponseDTO;
+import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.TaskSynthesisBatchResponseDTO;
 import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
 
@@ -23,6 +24,13 @@ public interface SynthesisService {
                                                   List<Long> breakingSentenceIds);
 
     TaskSynthesisStatusDTO getTaskSynthesisStatus(Long taskId);
+
+    /**
+     * 设置拆句合成参数
+     * 
+     * @param request 配置请求
+     */
+    void setConfig(SynthesisSetConfigRequest request);
 
     /**
      * 处理华为云TTS回调

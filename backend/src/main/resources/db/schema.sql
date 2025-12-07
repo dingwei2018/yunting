@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS `pause_settings` (
 CREATE TABLE IF NOT EXISTS `polyphonic_settings` (
     `polyphonic_id` BIGINT AUTO_INCREMENT PRIMARY KEY,
     `breaking_sentence_id` BIGINT NOT NULL,
-    `character` VARCHAR(10) NOT NULL,
+    `word` VARCHAR(10) NOT NULL,
     `position` INT NOT NULL,
     `pronunciation` VARCHAR(50) NOT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -7,6 +7,8 @@ import java.util.List;
 
 public interface BreakingSentenceMapper {
 
+    int insert(BreakingSentence sentence);
+
     int insertBatch(@Param("list") List<BreakingSentence> sentences);
 
     List<BreakingSentence> selectByTaskId(@Param("taskId") Long taskId);

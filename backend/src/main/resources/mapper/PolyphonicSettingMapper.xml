@@ -7,7 +7,7 @@
     <resultMap id="PolyphonicSettingResultMap" type="com.yunting.model.PolyphonicSetting">
         <id property="polyphonicId" column="polyphonic_id"/>
         <result property="breakingSentenceId" column="breaking_sentence_id"/>
-        <result property="character" column="character"/>
+        <result property="word" column="word"/>
         <result property="position" column="position"/>
         <result property="pronunciation" column="pronunciation"/>
         <result property="createdAt" column="created_at"/>
@@ -35,10 +35,10 @@
     </delete>
 
     <insert id="insertBatch" parameterType="java.util.List">
-        INSERT INTO polyphonic_settings (breaking_sentence_id, character, position, pronunciation, created_at)
+        INSERT INTO polyphonic_settings (breaking_sentence_id, word, position, pronunciation, created_at)
         VALUES
         <foreach collection="list" item="item" separator=",">
-            (#{item.breakingSentenceId}, #{item.character}, #{item.position}, #{item.pronunciation}, NOW())
+            (#{item.breakingSentenceId}, #{item.word}, #{item.position}, #{item.pronunciation}, NOW())
         </foreach>
     </insert>
 

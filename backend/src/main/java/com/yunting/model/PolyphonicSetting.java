@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 public class PolyphonicSetting {
     private Long polyphonicId;
     private Long breakingSentenceId;
-    private String character;
+    private String word;
     private Integer position;
     private String pronunciation;
     private LocalDateTime createdAt;
@@ -26,12 +26,12 @@ public class PolyphonicSetting {
         this.breakingSentenceId = breakingSentenceId;
     }
 
-    public String getCharacter() {
-        return character;
+    public String getWord() {
+        return word;
     }
 
-    public void setCharacter(String character) {
-        this.character = character;
+    public void setWord(String word) {
+        this.word = word;
     }
 
     public Integer getPosition() {

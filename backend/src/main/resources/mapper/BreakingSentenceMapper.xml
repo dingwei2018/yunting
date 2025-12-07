@@ -20,6 +20,13 @@
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
+    <insert id="insert" parameterType="com.yunting.model.BreakingSentence" useGeneratedKeys="true" keyProperty="breakingSentenceId">
+        INSERT INTO breaking_sentences (task_id, original_sentence_id, content, char_count, sequence,
+                                       synthesis_status, audio_url, audio_duration, ssml, created_at, updated_at)
+        VALUES (#{taskId}, #{originalSentenceId}, #{content}, #{charCount}, #{sequence},
+                #{synthesisStatus}, #{audioUrl}, #{audioDuration}, #{ssml}, NOW(), NOW())
+    </insert>
+
     <insert id="insertBatch" parameterType="java.util.List">
         INSERT INTO breaking_sentences (task_id, original_sentence_id, content, char_count, sequence,
                                        synthesis_status, audio_url, audio_duration, ssml, created_at, updated_at)

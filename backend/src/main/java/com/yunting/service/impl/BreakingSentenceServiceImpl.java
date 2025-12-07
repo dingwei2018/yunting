@@ -239,7 +239,7 @@ public class BreakingSentenceServiceImpl implements BreakingSentenceService {
     private PolyphonicSettingDTO toPolyphonicDTO(PolyphonicSetting polyphonicSetting) {
         PolyphonicSettingDTO dto = new PolyphonicSettingDTO();
         dto.setId(polyphonicSetting.getPolyphonicId());
-        dto.setCharacter(polyphonicSetting.getCharacter());
+        dto.setCharacter(polyphonicSetting.getWord());
         dto.setPosition(polyphonicSetting.getPosition());
         dto.setPronunciation(polyphonicSetting.getPronunciation());
         return dto;
@@ -301,7 +301,7 @@ public class BreakingSentenceServiceImpl implements BreakingSentenceService {
                 List<PolyphonicSetting> list = request.getPolyphonic().stream().map(p -> {
                     PolyphonicSetting model = new PolyphonicSetting();
                     model.setBreakingSentenceId(sentence.getBreakingSentenceId());
-                    model.setCharacter(p.getCharacter());
+                    model.setWord(p.getCharacter());
                     model.setPosition(p.getPosition());
                     model.setPronunciation(p.getPronunciation());
                     return model;

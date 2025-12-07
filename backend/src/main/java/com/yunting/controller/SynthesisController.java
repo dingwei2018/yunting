@@ -3,6 +3,7 @@ package com.yunting.controller;
 import com.yunting.common.ApiResponse;
 import com.yunting.common.ResponseUtil;
 import com.yunting.dto.synthesis.BreakingSentenceSynthesisResponseDTO;
+import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.TaskSynthesisBatchResponseDTO;
 import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
@@ -77,6 +78,16 @@ public class SynthesisController {
     public ApiResponse<TaskSynthesisStatusDTO> getSynthesisStatus(@RequestParam("taskid") Long taskId) {
         TaskSynthesisStatusDTO dto = synthesisService.getTaskSynthesisStatus(taskId);
         return ResponseUtil.success(dto);
+    }
+
+    /**
+     * 设置拆句合成参数
+     * 覆盖旧数据
+     */
+    @PostMapping("/synthesis/setConfig")
+    public ApiResponse<String> setConfig(@RequestBody SynthesisSetConfigRequest request) {
+        synthesisService.setConfig(request);
+        return ResponseUtil.success("配置更新成功");
     }
 
     /**
