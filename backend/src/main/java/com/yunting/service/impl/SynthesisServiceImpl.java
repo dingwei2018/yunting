@@ -236,8 +236,8 @@ public class SynthesisServiceImpl implements SynthesisService {
                         String errorMsg = "断句ID " + sentence.getBreakingSentenceId();
                         if (failedSentence == null) {
                             errorMsg += "：断句不存在";
-                        } else if (!StringUtils.hasText(failedSentence.getSsml())) {
-                            errorMsg += "：SSML内容为空";
+                        } else if (!StringUtils.hasText(failedSentence.getSsml()) && !StringUtils.hasText(failedSentence.getContent())) {
+                            errorMsg += "：SSML和content都为空";
                         } else {
                             errorMsg += "：TTS合成请求发送失败";
                         }
@@ -256,6 +256,62 @@ public class SynthesisServiceImpl implements SynthesisService {
             return "合成中";
         } catch (Exception e) {
             logger.error("合成拆句时发生异常，originalSentenceId: {}", originalSentenceId, e);
+            return "合成失败：" + e.getMessage();
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public String synthesizeTask(Long taskId) {
+        try {
+            // 1. 参数验证：确保任务ID不为空
+            ValidationUtil.notNull(taskId, "taskId不能为空");
+            
+            // 2. 验证任务是否存在
+            Task task = taskMapper.selectById(taskId);
+            if (task == null) {
+                logger.warn("任务不存在，taskId: {}", taskId);
+                return "合成失败：任务不存在";
+            }
+            
+            // 3. 查询该任务下的所有断句
+            List<BreakingSentence> sentences = breakingSentenceMapper.selectByTaskId(taskId);
+            if (sentences.isEmpty()) {
+                logger.warn("任务下没有断句，taskId: {}", taskId);
+                return "合成失败：任务下没有断句";
+            }
+            
+            // 4. 对每个断句调用合成逻辑，收集失败信息
+            List<String> failureMessages = new ArrayList<>();
+            for (BreakingSentence sentence : sentences) {
+                try {
+                    String result = synthesize(sentence.getBreakingSentenceId());
+                    if ("合成失败".equals(result)) {
+                        // 查询失败原因
+                        BreakingSentence failedSentence = breakingSentenceMapper.selectById(sentence.getBreakingSentenceId());
+                        String errorMsg = "断句ID " + sentence.getBreakingSentenceId();
+                        if (failedSentence == null) {
+                            errorMsg += "：断句不存在";
+                        } else if (!StringUtils.hasText(failedSentence.getSsml()) && !StringUtils.hasText(failedSentence.getContent())) {
+                            errorMsg += "：SSML和content都为空";
+                        } else {
+                            errorMsg += "：TTS合成请求发送失败";
+                        }
+                        failureMessages.add(errorMsg);
+                    }
+                } catch (Exception e) {
+                    logger.error("合成断句失败，breakingSentenceId: {}", sentence.getBreakingSentenceId(), e);
+                    failureMessages.add("断句ID " + sentence.getBreakingSentenceId() + "：" + e.getMessage());
+                }
+            }
+            
+            // 5. 如果有失败，返回失败信息；否则返回"合成中"
+            if (!failureMessages.isEmpty()) {
+                return "合成失败：" + String.join("；", failureMessages);
+            }
+            return "合成中";
+        } catch (Exception e) {
+            logger.error("合成任务时发生异常，taskId: {}", taskId, e);
             return "合成失败：" + e.getMessage();
         }
     }

@@ -6,6 +6,7 @@ import com.yunting.util.ValidationUtil;
 import com.yunting.dto.synthesis.SynthesisBreakingSentenceRequest;
 import com.yunting.dto.synthesis.SynthesisOriginalSentenceRequest;
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
+import com.yunting.dto.synthesis.SynthesisTaskRequest;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
 import com.yunting.service.RocketMQTtsCallbackService;
 import com.yunting.service.SynthesisService;
@@ -48,6 +49,18 @@ public class SynthesisController {
             @RequestBody SynthesisOriginalSentenceRequest request) {
         ValidationUtil.notNull(request.getOriginalSentenceId(), "originalSentenceId不能为空");
         String status = synthesisService.synthesizeOriginalSentence(request.getOriginalSentenceId());
+        return ResponseUtil.success(status);
+    }
+
+    /**
+     * 合成任务
+     * 合成或重新合成任务下的所有断句
+     */
+    @PostMapping("/task")
+    public ApiResponse<String> synthesizeTask(
+            @RequestBody SynthesisTaskRequest request) {
+        ValidationUtil.notNull(request.getTaskId(), "taskId不能为空");
+        String status = synthesisService.synthesizeTask(request.getTaskId());
         return ResponseUtil.success(status);
     }
 

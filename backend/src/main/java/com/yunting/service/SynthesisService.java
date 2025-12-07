@@ -8,6 +8,8 @@ public interface SynthesisService {
 
     String synthesizeOriginalSentence(Long originalSentenceId);
 
+    String synthesizeTask(Long taskId);
+
     /**
      * 设置拆句合成参数
      * 
