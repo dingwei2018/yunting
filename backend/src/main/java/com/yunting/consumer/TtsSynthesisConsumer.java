@@ -203,10 +203,10 @@ public class TtsSynthesisConsumer {
             CreateAsyncTtsJobRequest ttsRequest = new CreateAsyncTtsJobRequest();
             CreateAsyncTtsJobRequestBody body = new CreateAsyncTtsJobRequestBody();
             
-            body.withText(request.getContent())
+            // 使用 SSML 字段
+            body.withText(request.getSsml())
                     .withVoiceAssetId(request.getVoiceId())
                     .withSpeed(request.getSpeechRate())
-                    .withPitch(request.getPitch())
                     .withVolume(request.getVolume())
                     .withCallbackConfig(new TtsCallBackConfig().withCallbackUrl(callbackUrl));
             

@@ -22,5 +22,7 @@ public interface TaskMapper {
                                @Param("charCountLimit") Integer charCountLimit);
 
     int updateById(Task task);
+
+    int updateStatus(@Param("taskId") Long taskId, @Param("status") Integer status);
 }
 

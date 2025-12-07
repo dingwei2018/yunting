@@ -9,12 +9,7 @@ import java.util.List;
 
 public interface SynthesisService {
 
-    BreakingSentenceSynthesisResponseDTO synthesize(Long breakingSentenceId,
-                                                    String voiceId,
-                                                    Integer speechRate,
-                                                    Integer volume,
-                                                    Integer pitch,
-                                                    boolean resetStatus);
+    String synthesize(Long breakingSentenceId);
 
     TaskSynthesisBatchResponseDTO synthesizeBatch(Long taskId,
                                                   String voiceId,

@@ -63,5 +63,12 @@
             updated_at = NOW()
         WHERE task_id = #{taskId}
     </update>
+
+    <update id="updateStatus">
+        UPDATE tasks
+        SET status = #{status},
+            updated_at = NOW()
+        WHERE task_id = #{taskId}
+    </update>
 </mapper>
 

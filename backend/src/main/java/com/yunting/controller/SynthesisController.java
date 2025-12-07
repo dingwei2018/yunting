@@ -2,7 +2,8 @@ package com.yunting.controller;
 
 import com.yunting.common.ApiResponse;
 import com.yunting.common.ResponseUtil;
-import com.yunting.dto.synthesis.BreakingSentenceSynthesisResponseDTO;
+import com.yunting.util.ValidationUtil;
+import com.yunting.dto.synthesis.SynthesisBreakingSentenceRequest;
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.TaskSynthesisBatchResponseDTO;
 import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
@@ -22,7 +23,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/synthesis")
 public class SynthesisController {
 
     private final SynthesisService synthesisService;
@@ -35,30 +36,15 @@ public class SynthesisController {
     }
 
     /**
-     * 语音合成接口
+     * 合成断句
+     * 合成或重新合成单个断句
      */
-    @PostMapping("/breaking-sentences/synthesize")
-    public ApiResponse<BreakingSentenceSynthesisResponseDTO> synthesize(
-            @RequestParam("breaking_sentence_id") Long breakingSentenceId,
-            @RequestParam(value = "voice_id") String voiceId,
-            @RequestParam(value = "speech_rate", required = false) Integer speechRate,
-            @RequestParam(value = "volume", required = false) Integer volume,
-            @RequestParam(value = "pitch", required = false) Integer pitch) {
-        BreakingSentenceSynthesisResponseDTO data = synthesisService.synthesize(
-                breakingSentenceId, voiceId, speechRate, volume, pitch, false);
-        return ResponseUtil.success(data);
-    }
-
-    @PostMapping("/breaking-sentences/resynthesize")
-    public ApiResponse<BreakingSentenceSynthesisResponseDTO> reSynthesize(
-            @RequestParam("breaking_sentence_id") Long breakingSentenceId,
-            @RequestParam(value = "voice_id", required = false) String voiceId,
-            @RequestParam(value = "speech_rate", required = false) Integer speechRate,
-            @RequestParam(value = "volume", required = false) Integer volume,
-            @RequestParam(value = "pitch", required = false) Integer pitch) {
-        BreakingSentenceSynthesisResponseDTO data = synthesisService.synthesize(
-                breakingSentenceId, voiceId, speechRate, volume, pitch, true);
-        return ResponseUtil.success(data);
+    @PostMapping("/breakingSentence")
+    public ApiResponse<String> synthesizeBreakingSentence(
+            @RequestBody SynthesisBreakingSentenceRequest request) {
+        ValidationUtil.notNull(request.getBreakingSentenceId(), "breakingSentenceId不能为空");
+        String status = synthesisService.synthesize(request.getBreakingSentenceId());
+        return ResponseUtil.success(status);
     }
 
     @PostMapping("/tasks/synthesize")
@@ -74,7 +60,7 @@ public class SynthesisController {
         return ResponseUtil.success(data);
     }
 
-    @GetMapping("/synthesis/tasks")
+    @GetMapping("/tasks")
     public ApiResponse<TaskSynthesisStatusDTO> getSynthesisStatus(@RequestParam("taskid") Long taskId) {
         TaskSynthesisStatusDTO dto = synthesisService.getTaskSynthesisStatus(taskId);
         return ResponseUtil.success(dto);
@@ -84,7 +70,7 @@ public class SynthesisController {
      * 设置拆句合成参数
      * 覆盖旧数据
      */
-    @PostMapping("/synthesis/setConfig")
+    @PostMapping("/setConfig")
     public ApiResponse<String> setConfig(@RequestBody SynthesisSetConfigRequest request) {
         synthesisService.setConfig(request);
         return ResponseUtil.success("配置更新成功");

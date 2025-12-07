@@ -11,7 +11,7 @@ public class TtsSynthesisRequest {
     private Integer volume;
     private Integer pitch;
     private boolean resetStatus;
-    private String content;  // 断句内容
+    private String ssml;  // SSML内容
     
     public Long getBreakingSentenceId() {
         return breakingSentenceId;
@@ -61,12 +61,12 @@ public class TtsSynthesisRequest {
         this.resetStatus = resetStatus;
     }
     
-    public String getContent() {
-        return content;
+    public String getSsml() {
+        return ssml;
     }
     
-    public void setContent(String content) {
-        this.content = content;
+    public void setSsml(String ssml) {
+        this.ssml = ssml;
     }
 }
 

@@ -1,11 +1,10 @@
 package com.yunting.service.impl;
 
-import com.huaweicloud.sdk.metastudio.v1.MetaStudioClient;
-import com.yunting.dto.synthesis.BreakingSentenceSynthesisResponseDTO;
 import com.yunting.dto.synthesis.SynthesisResultDTO;
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.TaskSynthesisBatchResponseDTO;
 import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
+import com.yunting.dto.synthesis.TtsSynthesisRequest;
 import com.yunting.exception.BusinessException;
 import com.yunting.mapper.BreakingSentenceMapper;
 import com.yunting.mapper.PauseSettingMapper;
@@ -20,20 +19,14 @@ import com.yunting.model.ProsodySetting;
 import com.yunting.model.SynthesisSetting;
 import com.yunting.model.Task;
 import com.yunting.service.SynthesisService;
+import com.yunting.service.ObsStorageService;
+import com.yunting.service.RocketMQTtsSynthesisService;
 import com.yunting.util.ValidationUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
-import com.huaweicloud.sdk.core.auth.ICredential;
-import com.huaweicloud.sdk.core.auth.BasicCredentials;
-import com.huaweicloud.sdk.core.exception.ConnectionException;
-import com.huaweicloud.sdk.core.exception.RequestTimeoutException;
-import com.huaweicloud.sdk.core.exception.ServiceResponseException;
-import com.huaweicloud.sdk.metastudio.v1.region.MetaStudioRegion;
-import com.huaweicloud.sdk.metastudio.v1.*;
-import com.huaweicloud.sdk.metastudio.v1.model.*;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -47,9 +40,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
-import com.yunting.dto.synthesis.TtsSynthesisRequest;
-import com.yunting.service.ObsStorageService;
-import com.yunting.service.RocketMQTtsSynthesisService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -122,61 +112,75 @@ public class SynthesisServiceImpl implements SynthesisService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public BreakingSentenceSynthesisResponseDTO synthesize(Long breakingSentenceId,
-                                                           String voiceId,
-                                                           Integer speechRate,
-                                                           Integer volume,
-                                                           Integer pitch,
-                                                           boolean resetStatus) {
-        // 1. 参数验证：确保断句ID不为空
-        ValidationUtil.notNull(breakingSentenceId, "breaking_sentence_id不能为空");
-        
-        // 2. 查询断句信息，验证断句是否存在
-        BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
-        if (sentence == null) {
-            throw new BusinessException(10404, "断句不存在");
-        }
+    public String synthesize(Long breakingSentenceId) {
+        try {
+            // 1. 参数验证：确保断句ID不为空
+            ValidationUtil.notNull(breakingSentenceId, "breakingSentenceId不能为空");
+            
+            // 2. 查询断句信息，验证断句是否存在
+            BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
+            if (sentence == null) {
+                logger.warn("断句不存在，breakingSentenceId: {}", breakingSentenceId);
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+                return "合成失败";
+            }
 
-        // 3. 如果resetStatus为true，重置断句的合成状态为未合成(0)
-        //    这允许对已合成的断句重新进行合成
-        if (resetStatus) {
-            breakingSentenceMapper.resetSynthesisStatus(breakingSentenceId);
-            sentence.setSynthesisStatus(0);
-        }
+            // 3. 验证 SSML 是否存在
+            if (!StringUtils.hasText(sentence.getSsml())) {
+                logger.warn("断句的SSML内容为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+                return "合成失败";
+            }
 
-        // 4. 如果提供了任意合成参数，更新或创建该断句的合成设置
-        //    合成设置会保存到synthesis_settings表中，供后续合成使用
-        if (StringUtils.hasText(voiceId) || speechRate != null || volume != null || pitch != null) {
-            upsertSetting(breakingSentenceId, voiceId, speechRate, volume, pitch);
-        }
+            // 4. 从 synthesis_settings 表中读取合成参数（虽然使用SSML，但保留这些参数以备后用）
+            SynthesisSetting setting = synthesisSettingMapper.selectByBreakingSentenceId(breakingSentenceId);
+            String voiceId = null;
+            Integer speechRate = null;
+            Integer volume = null;
+            Integer pitch = null;
+            
+            if (setting != null) {
+                voiceId = setting.getVoiceId();
+                speechRate = setting.getSpeechRate();
+                volume = setting.getVolume();
+                pitch = setting.getPitch();
+            }
 
-        // 5. 构建TTS合成请求消息
-        TtsSynthesisRequest synthesisRequest = new TtsSynthesisRequest();
-        synthesisRequest.setBreakingSentenceId(breakingSentenceId);
-        synthesisRequest.setVoiceId(voiceId);
-        synthesisRequest.setSpeechRate(speechRate);
-        synthesisRequest.setVolume(volume);
-        synthesisRequest.setPitch(pitch);
-        synthesisRequest.setResetStatus(resetStatus);
-        synthesisRequest.setContent(sentence.getContent());
-        
-        // 6. 发送消息到RocketMQ，而不是直接调用华为云API
-        //    实际的API调用会在 TtsSynthesisConsumer 中限流处理（5次/秒）
-        boolean success = rocketMQTtsSynthesisService.sendSynthesisRequest(synthesisRequest);
-        if (!success) {
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-            throw new BusinessException(10500, "TTS合成请求发送失败");
+            // 5. 构建TTS合成请求消息
+            TtsSynthesisRequest synthesisRequest = new TtsSynthesisRequest();
+            synthesisRequest.setBreakingSentenceId(breakingSentenceId);
+            synthesisRequest.setVoiceId(voiceId);
+            synthesisRequest.setSpeechRate(speechRate);
+            synthesisRequest.setVolume(volume);
+            synthesisRequest.setPitch(pitch);
+            synthesisRequest.setResetStatus(false);
+            synthesisRequest.setSsml(sentence.getSsml());  // 使用 SSML 字段
+            
+            // 6. 发送消息到RocketMQ，而不是直接调用华为云API
+            //    实际的API调用会在 TtsSynthesisConsumer 中限流处理（5次/秒）
+            boolean success = rocketMQTtsSynthesisService.sendSynthesisRequest(synthesisRequest);
+            if (!success) {
+                // 发送失败，更新状态为失败并返回"合成失败"
+                logger.error("TTS合成请求发送失败，breakingSentenceId: {}", breakingSentenceId);
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+                return "合成失败";
+            }
+            
+            // 7. 更新状态为合成中（实际创建任务会在 Consumer 中完成）
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 1, null, null);
+            
+            // 8. 返回合成状态文本（由于消息队列的存在，只会返回"合成中"或"合成失败"）
+            return "合成中";
+        } catch (Exception e) {
+            // 任何异常都返回"合成失败"
+            logger.error("合成断句时发生异常，breakingSentenceId: {}", breakingSentenceId, e);
+            try {
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            } catch (Exception ex) {
+                logger.error("更新断句状态失败，breakingSentenceId: {}", breakingSentenceId, ex);
+            }
+            return "合成失败";
         }
-        
-        // 7. 更新状态为合成中（实际创建任务会在 Consumer 中完成）
-        breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 1, null, null);
-        
-        // 8. 构建并返回响应对象
-        BreakingSentenceSynthesisResponseDTO responseDTO = new BreakingSentenceSynthesisResponseDTO();
-        responseDTO.setBreakingSentenceId(breakingSentenceId);
-        responseDTO.setTaskId(sentence.getTaskId());
-        responseDTO.setSynthesisStatus(1); // 1表示合成中
-        return responseDTO;
     }
 
     @Override
@@ -542,6 +546,11 @@ public class SynthesisServiceImpl implements SynthesisService {
             logger.warn("音频下载URL为空，jobId: {}, breakingSentenceId: {}", 
                     callbackRequest.getJobId(), breakingSentenceId);
             breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            // 更新失败后也要检查并更新 task 状态
+            BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
+            if (sentence != null) {
+                updateTaskStatusIfNeeded(sentence.getTaskId());
+            }
             return;
         }
 
@@ -584,9 +593,20 @@ public class SynthesisServiceImpl implements SynthesisService {
             logger.info("TTS任务完成，已更新数据库，breakingSentenceId: {}, audioUrl: {}, duration: {}ms", 
                     breakingSentenceId, obsUrl, audioDuration);
 
+            // 7. 检查并更新 task 状态
+            BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
+            if (sentence != null) {
+                updateTaskStatusIfNeeded(sentence.getTaskId());
+            }
+
         } catch (Exception e) {
             logger.error("处理完成回调异常，breakingSentenceId: {}", breakingSentenceId, e);
             breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            // 更新失败后也要检查并更新 task 状态
+            BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
+            if (sentence != null) {
+                updateTaskStatusIfNeeded(sentence.getTaskId());
+            }
             throw new BusinessException(10500, "处理音频文件失败: " + e.getMessage());
         } finally {
             // 7. 清理临时文件
@@ -647,6 +667,70 @@ public class SynthesisServiceImpl implements SynthesisService {
         logger.error("TTS任务失败，jobId: {}, breakingSentenceId: {}", 
                 callbackRequest.getJobId(), breakingSentenceId);
         breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+        
+        // 检查并更新 task 状态
+        BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
+        if (sentence != null) {
+            updateTaskStatusIfNeeded(sentence.getTaskId());
+        }
+    }
+
+    /**
+     * 根据 breaking_sentence 的合成状态更新 task 状态
+     * 规则：
+     * - 如果有 breaking_sentence 合成失败（状态为3），task 状态 = 3（失败）
+     * - 如果有 breaking_sentence 还未完成合成（状态为0或1），task 状态 = 1（进行中）
+     * - 如果全部 breaking_sentence 都已完成合成（状态都为2），task 状态 = 2（已完成）
+     * 
+     * @param taskId 任务ID
+     */
+    private void updateTaskStatusIfNeeded(Long taskId) {
+        try {
+            // 1. 查询该 task 下所有 breaking_sentence
+            List<BreakingSentence> sentences = breakingSentenceMapper.selectByTaskId(taskId);
+            if (sentences.isEmpty()) {
+                logger.warn("任务下没有断句，taskId: {}", taskId);
+                return;
+            }
+
+            // 2. 统计各状态的数量
+            int total = sentences.size();
+            long completed = sentences.stream()
+                    .filter(s -> Objects.equals(s.getSynthesisStatus(), 2))
+                    .count();
+            long failed = sentences.stream()
+                    .filter(s -> Objects.equals(s.getSynthesisStatus(), 3))
+                    .count();
+            long processing = sentences.stream()
+                    .filter(s -> Objects.equals(s.getSynthesisStatus(), 1))
+                    .count();
+            long pending = sentences.stream()
+                    .filter(s -> Objects.equals(s.getSynthesisStatus(), 0))
+                    .count();
+
+            // 3. 根据规则判断并更新 task 状态（优先级：失败 > 进行中 > 已完成）
+            Integer newStatus = null;
+            if (failed > 0) {
+                // 如果有失败的断句，task 状态 = 3（失败）
+                newStatus = 3;
+            } else if (processing > 0 || pending > 0) {
+                // 如果有进行中或待处理的断句，task 状态 = 1（进行中）
+                newStatus = 1;
+            } else if (completed == total) {
+                // 如果全部完成，task 状态 = 2（已完成）
+                newStatus = 2;
+            }
+
+            // 4. 更新 task 状态
+            if (newStatus != null) {
+                taskMapper.updateStatus(taskId, newStatus);
+                logger.info("更新任务状态，taskId: {}, newStatus: {}, total: {}, completed: {}, failed: {}, processing: {}, pending: {}", 
+                        taskId, newStatus, total, completed, failed, processing, pending);
+            }
+        } catch (Exception e) {
+            logger.error("更新任务状态失败，taskId: {}", taskId, e);
+            // 不抛出异常，避免影响主流程
+        }
     }
 }
 
