@@ -836,16 +836,20 @@ public class SynthesisServiceImpl implements SynthesisService {
         // 计算进度（1-100）
         int progress = total > 0 ? (int) Math.round((double) completed / total * 100) : 0;
         
-        // 确定整体状态
-        String status;
+        // 确定整体状态（使用 SynthesisStatus.Status 常量值）
+        Integer status;
         if (failed > 0) {
-            status = "合成失败";
+            // 如果有失败的断句，返回 3（合成失败）
+            status = SynthesisStatus.Status.FAILED;
         } else if (processing > 0 || pending > 0) {
-            status = "合成中";
+            // 如果有进行中或待处理的断句，返回 1（合成中）
+            status = SynthesisStatus.Status.PROCESSING;
         } else if (completed == total && total > 0) {
-            status = "已完成";
+            // 如果全部完成，返回 2（已合成）
+            status = SynthesisStatus.Status.COMPLETED;
         } else {
-            status = "未开始";
+            // 否则返回 0（未合成）
+            status = SynthesisStatus.Status.PENDING;
         }
         
         result.setStatus(status);

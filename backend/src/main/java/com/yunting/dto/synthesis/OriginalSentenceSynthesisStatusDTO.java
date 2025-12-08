@@ -3,18 +3,18 @@ package com.yunting.dto.synthesis;
 import java.util.List;
 
 public class OriginalSentenceSynthesisStatusDTO {
-    private String status;
+    private Integer status;
     private int progress;
     private int total;
     private int completed;
     private int pending;
     private List<AudioUrlItem> audioUrlList;
 
-    public String getStatus() {
+    public Integer getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(Integer status) {
         this.status = status;
     }
 
