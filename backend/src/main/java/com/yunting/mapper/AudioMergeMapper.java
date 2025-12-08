@@ -10,6 +10,11 @@ public interface AudioMergeMapper {
     AudioMerge selectById(@Param("mergeId") Long mergeId);
 
     int updateById(AudioMerge audioMerge);
+
+    /**
+     * 根据任务ID查询最新的合并记录
+     */
+    AudioMerge selectLatestByTaskId(@Param("taskId") Long taskId);
 }
 
 

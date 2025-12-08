@@ -5,9 +5,11 @@ import com.yunting.dto.task.TaskCreateRequest;
 import com.yunting.dto.task.TaskCreateResponseDTO;
 import com.yunting.dto.task.TaskDetailDTO;
 import com.yunting.exception.BusinessException;
+import com.yunting.mapper.AudioMergeMapper;
 import com.yunting.mapper.BreakingSentenceMapper;
 import com.yunting.mapper.OriginalSentenceMapper;
 import com.yunting.mapper.TaskMapper;
+import com.yunting.model.AudioMerge;
 import com.yunting.model.BreakingSentence;
 import com.yunting.model.OriginalSentence;
 import com.yunting.model.Task;
@@ -41,13 +43,16 @@ public class TaskServiceImpl implements TaskService {
     private final TaskMapper taskMapper;
     private final OriginalSentenceMapper originalSentenceMapper;
     private final BreakingSentenceMapper breakingSentenceMapper;
+    private final AudioMergeMapper audioMergeMapper;
 
     public TaskServiceImpl(TaskMapper taskMapper,
                            OriginalSentenceMapper originalSentenceMapper,
-                           BreakingSentenceMapper breakingSentenceMapper) {
+                           BreakingSentenceMapper breakingSentenceMapper,
+                           AudioMergeMapper audioMergeMapper) {
         this.taskMapper = taskMapper;
         this.originalSentenceMapper = originalSentenceMapper;
         this.breakingSentenceMapper = breakingSentenceMapper;
+        this.audioMergeMapper = audioMergeMapper;
     }
 
     @Override
@@ -156,8 +161,8 @@ public class TaskServiceImpl implements TaskService {
             throw new BusinessException("任务不存在");
         }
         
-        // 查询原始拆句列表
-        List<OriginalSentence> originalSentences = originalSentenceMapper.selectByTaskId(taskId);
+        // 查询最新的合并记录
+        AudioMerge latestMerge = audioMergeMapper.selectLatestByTaskId(taskId);
         
         // 构建TaskDetailDTO
         TaskDetailDTO detailDTO = new TaskDetailDTO();
@@ -165,17 +170,16 @@ public class TaskServiceImpl implements TaskService {
         detailDTO.setContent(task.getContent());
         detailDTO.setCharCount(task.getCharCount());
         detailDTO.setStatus(task.getStatus());
-        // audioUrl 和 audioDuration 如果为 null，则设置为空值
+        // audioUrl 和 audioDuration 使用任务的合并音频URL，如果为 null，则设置为空值
         detailDTO.setAudioUrl(task.getMergedAudioUrl() != null ? task.getMergedAudioUrl() : "");
         detailDTO.setAudioDuration(task.getMergedAudioDuration() != null ? task.getMergedAudioDuration() : 0);
         detailDTO.setCreatedAt(task.getCreatedAt());
         detailDTO.setUpdatedAt(task.getUpdatedAt());
         
-        // 转换原始拆句列表
-        List<OriginalSentenceDTO> originalSentenceDTOList = originalSentences.stream()
-                .map(this::toOriginalSentenceDTO)
-                .collect(Collectors.toList());
-        detailDTO.setOriginalSentenceList(originalSentenceDTOList);
+        // 设置mergeId（如果有合并记录）
+        if (latestMerge != null) {
+            detailDTO.setMergeId(latestMerge.getMergeId());
+        }
         
         return detailDTO;
     }

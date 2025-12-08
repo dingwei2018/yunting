@@ -33,5 +33,12 @@
         WHERE merge_id = #{mergeId}
     </update>
 
+    <select id="selectLatestByTaskId" parameterType="long" resultMap="AudioMergeResultMap">
+        SELECT * FROM audio_merges 
+        WHERE task_id = #{taskId} 
+        ORDER BY created_at DESC 
+        LIMIT 1
+    </select>
+
 </mapper>
 

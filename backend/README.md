@@ -85,7 +85,6 @@ docker run -d -p 8080:8080 --name yunting-backend yunting-backend:latest
 
 - `GET /api/health` - 健康检查
 - `POST /api/tasks/createTask?content=...` - 创建任务并自动拆句
-- `GET /api/tasks/getTaskDetail?taskid={task_id}` - 获取任务详情
 - `GET /api/tasks/listTasks?page=1&page_size=20&status=2` - 分页查询任务列表
 - `GET /api/tasks/breaking-sentences?taskid={task_id}` - 获取断句列表
 - `GET /api/breaking-sentences/info?breaking_sentence_id={id}` - 获取断句详情
