@@ -19,6 +19,8 @@ import com.yunting.service.SynthesisService;
 import com.yunting.service.ObsStorageService;
 import com.yunting.service.RocketMQTtsSynthesisService;
 import com.yunting.util.ValidationUtil;
+import com.yunting.constant.SynthesisStatus;
+import com.yunting.constant.TaskStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -117,15 +119,15 @@ public class SynthesisServiceImpl implements SynthesisService {
             BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
             if (sentence == null) {
                 logger.warn("断句不存在，breakingSentenceId: {}", breakingSentenceId);
-                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-                return "合成失败";
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
+                return SynthesisStatus.Message.FAILED;
             }
 
             // 3. 验证 content 是否存在（SSML 可以为空，会在 Consumer 中使用 content）
             if (!StringUtils.hasText(sentence.getContent()) && !StringUtils.hasText(sentence.getSsml())) {
                 logger.warn("断句的SSML和content都为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
-                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-                return "合成失败";
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
+                return SynthesisStatus.Message.FAILED;
             }
 
             // 4. 从 synthesis_settings 表中读取合成参数（虽然使用SSML，但保留这些参数以备后用）
@@ -218,24 +220,24 @@ public class SynthesisServiceImpl implements SynthesisService {
             if (!success) {
                 // 发送失败，更新状态为失败并返回"合成失败"
                 logger.error("TTS合成请求发送失败，breakingSentenceId: {}", breakingSentenceId);
-                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-                return "合成失败";
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
+                return SynthesisStatus.Message.FAILED;
             }
             
             // 7. 更新状态为合成中（实际创建任务会在 Consumer 中完成）
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 1, null, null);
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.PROCESSING, null, null);
             
             // 8. 返回合成状态文本（由于消息队列的存在，只会返回"合成中"或"合成失败"）
-            return "合成中";
+            return SynthesisStatus.Message.PROCESSING;
         } catch (Exception e) {
             // 任何异常都返回"合成失败"
             logger.error("合成断句时发生异常，breakingSentenceId: {}", breakingSentenceId, e);
             try {
-                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
             } catch (Exception ex) {
                 logger.error("更新断句状态失败，breakingSentenceId: {}", breakingSentenceId, ex);
             }
-            return "合成失败";
+            return SynthesisStatus.Message.FAILED;
         }
     }
 
@@ -258,7 +260,7 @@ public class SynthesisServiceImpl implements SynthesisService {
             for (BreakingSentence sentence : sentences) {
                 try {
                     String result = synthesize(sentence.getBreakingSentenceId());
-                    if ("合成失败".equals(result)) {
+                    if (SynthesisStatus.Message.FAILED.equals(result)) {
                         // 查询失败原因
                         BreakingSentence failedSentence = breakingSentenceMapper.selectById(sentence.getBreakingSentenceId());
                         String errorMsg = "断句ID " + sentence.getBreakingSentenceId();
@@ -279,12 +281,12 @@ public class SynthesisServiceImpl implements SynthesisService {
             
             // 4. 如果有失败，返回失败信息；否则返回"合成中"
             if (!failureMessages.isEmpty()) {
-                return "合成失败：" + String.join("；", failureMessages);
+                return SynthesisStatus.Message.FAILED + "：" + String.join("；", failureMessages);
             }
-            return "合成中";
+            return SynthesisStatus.Message.PROCESSING;
         } catch (Exception e) {
             logger.error("合成拆句时发生异常，originalSentenceId: {}", originalSentenceId, e);
-            return "合成失败：" + e.getMessage();
+            return SynthesisStatus.Message.FAILED + "：" + e.getMessage();
         }
     }
 
@@ -299,14 +301,14 @@ public class SynthesisServiceImpl implements SynthesisService {
             Task task = taskMapper.selectById(taskId);
             if (task == null) {
                 logger.warn("任务不存在，taskId: {}", taskId);
-                return "合成失败：任务不存在";
+                return SynthesisStatus.Message.FAILED + "：任务不存在";
             }
             
             // 3. 查询该任务下的所有断句
             List<BreakingSentence> sentences = breakingSentenceMapper.selectByTaskId(taskId);
             if (sentences.isEmpty()) {
                 logger.warn("任务下没有断句，taskId: {}", taskId);
-                return "合成失败：任务下没有断句";
+                return SynthesisStatus.Message.FAILED + "：任务下没有断句";
             }
             
             // 4. 对每个断句调用合成逻辑，收集失败信息
@@ -314,7 +316,7 @@ public class SynthesisServiceImpl implements SynthesisService {
             for (BreakingSentence sentence : sentences) {
                 try {
                     String result = synthesize(sentence.getBreakingSentenceId());
-                    if ("合成失败".equals(result)) {
+                    if (SynthesisStatus.Message.FAILED.equals(result)) {
                         // 查询失败原因
                         BreakingSentence failedSentence = breakingSentenceMapper.selectById(sentence.getBreakingSentenceId());
                         String errorMsg = "断句ID " + sentence.getBreakingSentenceId();
@@ -335,12 +337,12 @@ public class SynthesisServiceImpl implements SynthesisService {
             
             // 5. 如果有失败，返回失败信息；否则返回"合成中"
             if (!failureMessages.isEmpty()) {
-                return "合成失败：" + String.join("；", failureMessages);
+                return SynthesisStatus.Message.FAILED + "：" + String.join("；", failureMessages);
             }
-            return "合成中";
+            return SynthesisStatus.Message.PROCESSING;
         } catch (Exception e) {
             logger.error("合成任务时发生异常，taskId: {}", taskId, e);
-            return "合成失败：" + e.getMessage();
+            return SynthesisStatus.Message.FAILED + "：" + e.getMessage();
         }
     }
 
@@ -381,7 +383,7 @@ public class SynthesisServiceImpl implements SynthesisService {
                 newSentence.setContent(config.getContent());
                 newSentence.setCharCount(calculateCharCount(config.getContent()));
                 newSentence.setSequence(maxSequence + 1);
-                newSentence.setSynthesisStatus(0);
+                newSentence.setSynthesisStatus(SynthesisStatus.Status.PENDING);
                 
                 breakingSentenceMapper.insert(newSentence);
                 breakingSentenceId = newSentence.getBreakingSentenceId();
@@ -563,13 +565,13 @@ public class SynthesisServiceImpl implements SynthesisService {
         logger.info("处理TTS回调，jobId: {}, status: {}, breakingSentenceId: {}", jobId, status, breakingSentenceId);
 
         try {
-            if ("FINISHED".equals(status)) {
+            if (SynthesisStatus.Callback.FINISHED.equals(status)) {
                 // 任务完成，处理音频文件
                 handleFinishedCallback(callbackRequest, breakingSentenceId);
-            } else if ("ERROR".equals(status)) {
+            } else if (SynthesisStatus.Callback.ERROR.equals(status)) {
                 // 任务失败
                 handleErrorCallback(callbackRequest, breakingSentenceId);
-            } else if ("WAITING".equals(status)) {
+            } else if (SynthesisStatus.Callback.WAITING.equals(status)) {
                 // 任务等待中，不需要处理
                 logger.info("TTS任务等待中，jobId: {}", jobId);
             } else {
@@ -578,7 +580,7 @@ public class SynthesisServiceImpl implements SynthesisService {
         } catch (Exception e) {
             logger.error("处理TTS回调异常，jobId: {}, breakingSentenceId: {}", jobId, breakingSentenceId, e);
             // 更新状态为失败
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
         }
     }
 
@@ -592,7 +594,7 @@ public class SynthesisServiceImpl implements SynthesisService {
         if (!StringUtils.hasText(audioDownloadUrl)) {
             logger.warn("音频下载URL为空，jobId: {}, breakingSentenceId: {}", 
                     callbackRequest.getJobId(), breakingSentenceId);
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
             // 更新失败后也要检查并更新 task 状态
             BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
             if (sentence != null) {
@@ -636,7 +638,7 @@ public class SynthesisServiceImpl implements SynthesisService {
                     audioDurationSeconds * 1000 : null;
 
             // 6. 更新数据库
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 2, obsUrl, audioDuration);
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.COMPLETED, obsUrl, audioDuration);
             logger.info("TTS任务完成，已更新数据库，breakingSentenceId: {}, audioUrl: {}, duration: {}ms", 
                     breakingSentenceId, obsUrl, audioDuration);
 
@@ -648,7 +650,7 @@ public class SynthesisServiceImpl implements SynthesisService {
 
         } catch (Exception e) {
             logger.error("处理完成回调异常，breakingSentenceId: {}", breakingSentenceId, e);
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
             // 更新失败后也要检查并更新 task 状态
             BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
             if (sentence != null) {
@@ -713,7 +715,7 @@ public class SynthesisServiceImpl implements SynthesisService {
     private void handleErrorCallback(TtsCallbackRequest callbackRequest, Long breakingSentenceId) {
         logger.error("TTS任务失败，jobId: {}, breakingSentenceId: {}", 
                 callbackRequest.getJobId(), breakingSentenceId);
-        breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+        breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
         
         // 检查并更新 task 状态
         BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
@@ -725,9 +727,9 @@ public class SynthesisServiceImpl implements SynthesisService {
     /**
      * 根据 breaking_sentence 的合成状态更新 task 状态
      * 规则：
-     * - 如果有 breaking_sentence 合成失败（状态为3），task 状态 = 3（失败）
-     * - 如果有 breaking_sentence 还未完成合成（状态为0或1），task 状态 = 1（进行中）
-     * - 如果全部 breaking_sentence 都已完成合成（状态都为2），task 状态 = 2（已完成）
+     * - 如果有 breaking_sentence 合成失败（状态为3），task 状态 = SYNTHESIS_FAILED（语音合成失败）
+     * - 如果有 breaking_sentence 还未完成合成（状态为0或1），task 状态 = SYNTHESIS_PROCESSING（语音合成中）
+     * - 如果全部 breaking_sentence 都已完成合成（状态都为2），task 状态 = SYNTHESIS_SUCCESS（语音合成成功）
      * 
      * @param taskId 任务ID
      */
@@ -743,29 +745,29 @@ public class SynthesisServiceImpl implements SynthesisService {
             // 2. 统计各状态的数量
             int total = sentences.size();
             long completed = sentences.stream()
-                    .filter(s -> Objects.equals(s.getSynthesisStatus(), 2))
+                    .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.COMPLETED))
                     .count();
             long failed = sentences.stream()
-                    .filter(s -> Objects.equals(s.getSynthesisStatus(), 3))
+                    .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.FAILED))
                     .count();
             long processing = sentences.stream()
-                    .filter(s -> Objects.equals(s.getSynthesisStatus(), 1))
+                    .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PROCESSING))
                     .count();
             long pending = sentences.stream()
-                    .filter(s -> Objects.equals(s.getSynthesisStatus(), 0))
+                    .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PENDING))
                     .count();
 
             // 3. 根据规则判断并更新 task 状态（优先级：失败 > 进行中 > 已完成）
             Integer newStatus = null;
             if (failed > 0) {
-                // 如果有失败的断句，task 状态 = 3（失败）
-                newStatus = 3;
+                // 如果有失败的断句，task 状态 = SYNTHESIS_FAILED（语音合成失败）
+                newStatus = TaskStatus.Status.SYNTHESIS_FAILED;
             } else if (processing > 0 || pending > 0) {
-                // 如果有进行中或待处理的断句，task 状态 = 1（进行中）
-                newStatus = 1;
+                // 如果有进行中或待处理的断句，task 状态 = SYNTHESIS_PROCESSING（语音合成中）
+                newStatus = TaskStatus.Status.SYNTHESIS_PROCESSING;
             } else if (completed == total) {
-                // 如果全部完成，task 状态 = 2（已完成）
-                newStatus = 2;
+                // 如果全部完成，task 状态 = SYNTHESIS_SUCCESS（语音合成成功）
+                newStatus = TaskStatus.Status.SYNTHESIS_SUCCESS;
             }
 
             // 4. 更新 task 状态

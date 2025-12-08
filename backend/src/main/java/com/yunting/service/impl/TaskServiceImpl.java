@@ -16,6 +16,8 @@ import com.yunting.model.Task;
 import com.yunting.service.TaskService;
 import com.yunting.util.SentenceSplitter;
 import com.yunting.util.ValidationUtil;
+import com.yunting.constant.TaskStatus;
+import com.yunting.constant.SynthesisStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -29,11 +31,6 @@ import java.util.stream.Collectors;
  */
 @Service
 public class TaskServiceImpl implements TaskService {
-
-    /**
-     * 任务状态：拆句完成
-     */
-    private static final int STATUS_SPLIT_COMPLETE = 0;
 
     /**
      * 默认断句标准ID：大符号
@@ -79,7 +76,7 @@ public class TaskServiceImpl implements TaskService {
         Task task = new Task();
         task.setContent(content);
         task.setCharCount(content.length());
-        task.setStatus(STATUS_SPLIT_COMPLETE);
+        task.setStatus(TaskStatus.Status.BREAKING_COMPLETED);
         task.setBreakingStandardId(DEFAULT_BREAKING_STANDARD_ID);
         task.setCharCountLimit(null);
         task.setMergedAudioUrl(null);
@@ -121,7 +118,7 @@ public class TaskServiceImpl implements TaskService {
             breaking.setContent(original.getContent());
             breaking.setCharCount(original.getCharCount());
             breaking.setSequence(original.getSequence());
-            breaking.setSynthesisStatus(0); // 未合成
+            breaking.setSynthesisStatus(SynthesisStatus.Status.PENDING); // 未合成
             breaking.setAudioUrl(null);
             breaking.setAudioDuration(null);
             breaking.setSsml(null);
