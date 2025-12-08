@@ -204,21 +204,15 @@ public class TtsSynthesisConsumer {
             CreateAsyncTtsJobRequest ttsRequest = new CreateAsyncTtsJobRequest();
             CreateAsyncTtsJobRequestBody body = new CreateAsyncTtsJobRequestBody();
             
-            // 获取文本内容：如果 SSML 为空，使用 content 字段
+            // 获取文本内容：使用 SSML（SSML 有默认值，不会为空）
             String textContent = request.getSsml();
             if (!StringUtils.hasText(textContent)) {
-                BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
-                if (sentence != null && StringUtils.hasText(sentence.getContent())) {
-                    textContent = sentence.getContent();
-                    logger.info("SSML为空，使用content字段，breakingSentenceId: {}", breakingSentenceId);
-                } else {
-                    logger.warn("SSML和content都为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
-                    breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
-                    return;
-                }
+                logger.warn("SSML为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+                return;
             }
             
-            // 使用文本内容（SSML 或 content）
+            // 使用文本内容（SSML）
             body.withText(textContent)
                     .withVoiceAssetId(request.getVoiceId())
                     .withSpeed(request.getSpeechRate())

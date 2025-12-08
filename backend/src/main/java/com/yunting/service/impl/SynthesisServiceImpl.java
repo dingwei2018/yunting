@@ -127,9 +127,9 @@ public class SynthesisServiceImpl implements SynthesisService {
                 return SynthesisStatus.Message.FAILED;
             }
 
-            // 3. 验证 content 是否存在（SSML 可以为空，会在 Consumer 中使用 content）
-            if (!StringUtils.hasText(sentence.getContent()) && !StringUtils.hasText(sentence.getSsml())) {
-                logger.warn("断句的SSML和content都为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
+            // 3. 验证 SSML 是否存在（SSML 现在有默认值，但还是要验证）
+            if (!StringUtils.hasText(sentence.getSsml())) {
+                logger.warn("断句的SSML为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
                 breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
                 return SynthesisStatus.Message.FAILED;
             }
@@ -270,8 +270,8 @@ public class SynthesisServiceImpl implements SynthesisService {
                         String errorMsg = "断句ID " + sentence.getBreakingSentenceId();
                         if (failedSentence == null) {
                             errorMsg += "：断句不存在";
-                        } else if (!StringUtils.hasText(failedSentence.getSsml()) && !StringUtils.hasText(failedSentence.getContent())) {
-                            errorMsg += "：SSML和content都为空";
+                        } else if (!StringUtils.hasText(failedSentence.getSsml())) {
+                            errorMsg += "：SSML为空";
                         } else {
                             errorMsg += "：TTS合成请求发送失败";
                         }
@@ -326,8 +326,8 @@ public class SynthesisServiceImpl implements SynthesisService {
                         String errorMsg = "断句ID " + sentence.getBreakingSentenceId();
                         if (failedSentence == null) {
                             errorMsg += "：断句不存在";
-                        } else if (!StringUtils.hasText(failedSentence.getSsml()) && !StringUtils.hasText(failedSentence.getContent())) {
-                            errorMsg += "：SSML和content都为空";
+                        } else if (!StringUtils.hasText(failedSentence.getSsml())) {
+                            errorMsg += "：SSML为空";
                         } else {
                             errorMsg += "：TTS合成请求发送失败";
                         }
