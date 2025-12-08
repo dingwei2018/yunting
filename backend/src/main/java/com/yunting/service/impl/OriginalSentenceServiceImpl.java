@@ -5,6 +5,7 @@ import com.yunting.exception.BusinessException;
 import com.yunting.mapper.*;
 import com.yunting.model.*;
 import com.yunting.service.OriginalSentenceService;
+import com.yunting.util.SynthesisStatusUtil;
 import com.yunting.util.ValidationUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -137,33 +138,7 @@ public class OriginalSentenceServiceImpl implements OriginalSentenceService {
     }
 
     private Integer aggregateSynthesisStatus(List<BreakingSentence> breakingSentences) {
-        if (breakingSentences.isEmpty()) {
-            return 0; // 未合成
-        }
-
-        // 如果任一断句状态为 3（失败） → 返回 3（失败）
-        boolean hasFailed = breakingSentences.stream()
-                .anyMatch(bs -> bs.getSynthesisStatus() != null && bs.getSynthesisStatus() == 3);
-        if (hasFailed) {
-            return 3; // 失败
-        }
-
-        // 如果所有断句状态都是 2（已完成） → 返回 2（已完成）
-        boolean allCompleted = breakingSentences.stream()
-                .allMatch(bs -> bs.getSynthesisStatus() != null && bs.getSynthesisStatus() == 2);
-        if (allCompleted) {
-            return 2; // 已完成
-        }
-
-        // 如果任一断句状态为 1（合成中）或 2（已合成） → 返回 1（进行中）
-        boolean hasInProgress = breakingSentences.stream()
-                .anyMatch(bs -> bs.getSynthesisStatus() != null && 
-                        (bs.getSynthesisStatus() == 1 || bs.getSynthesisStatus() == 2));
-        if (hasInProgress) {
-            return 1; // 进行中
-        }
-
-        return 0; // 默认未合成
+        return SynthesisStatusUtil.aggregateSynthesisStatus(breakingSentences);
     }
 
     private BreakingSentenceWithSettingDTO toBreakingSentenceWithSettingDTO(
