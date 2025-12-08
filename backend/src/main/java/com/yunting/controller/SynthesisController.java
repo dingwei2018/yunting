@@ -9,6 +9,7 @@ import com.yunting.dto.synthesis.SynthesisOriginalSentenceRequest;
 import com.yunting.dto.synthesis.SynthesisResultDTO;
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.SynthesisTaskRequest;
+import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
 import com.yunting.service.RocketMQTtsCallbackService;
 import com.yunting.service.SynthesisService;
@@ -128,6 +129,21 @@ public class SynthesisController {
             @RequestParam(required = false) Long originalSentenceId) {
         ValidationUtil.notNull(originalSentenceId, "originalSentenceId不能为空");
         OriginalSentenceSynthesisStatusDTO result = synthesisService.getOriginalSentenceStatus(originalSentenceId);
+        return ResponseUtil.success(result);
+    }
+
+    /**
+     * 获取任务合成状态
+     * 给出任务下所有断句的合成进度和已完成合成的音频文件下载地址和时长
+     * 
+     * @param taskid 任务ID
+     * @return 任务合成状态，包含进度、统计信息和音频URL列表
+     */
+    @GetMapping("/getTaskStatus")
+    public ApiResponse<TaskSynthesisStatusDTO> getTaskStatus(
+            @RequestParam(required = true) Long taskid) {
+        ValidationUtil.notNull(taskid, "taskid不能为空");
+        TaskSynthesisStatusDTO result = synthesisService.getTaskStatus(taskid);
         return ResponseUtil.success(result);
     }
 }

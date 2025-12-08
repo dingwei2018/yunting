@@ -1,27 +1,20 @@
 package com.yunting.dto.synthesis;
 
+import java.util.List;
+
 public class TaskSynthesisStatusDTO {
-    private Long taskId;
-    private String status;
+    private Integer status;
     private int progress;
     private int total;
     private int completed;
     private int pending;
-    private SynthesisResultDTO result;
+    private List<AudioUrlItem> audioUrlList;
 
-    public Long getTaskId() {
-        return taskId;
-    }
-
-    public void setTaskId(Long taskId) {
-        this.taskId = taskId;
-    }
-
-    public String getStatus() {
+    public Integer getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(Integer status) {
         this.status = status;
     }
 
@@ -57,12 +50,33 @@ public class TaskSynthesisStatusDTO {
         this.pending = pending;
     }
 
-    public SynthesisResultDTO getResult() {
-        return result;
+    public List<AudioUrlItem> getAudioUrlList() {
+        return audioUrlList;
     }
 
-    public void setResult(SynthesisResultDTO result) {
-        this.result = result;
+    public void setAudioUrlList(List<AudioUrlItem> audioUrlList) {
+        this.audioUrlList = audioUrlList;
+    }
+
+    public static class AudioUrlItem {
+        private Integer sequence;
+        private String audioUrl;
+
+        public Integer getSequence() {
+            return sequence;
+        }
+
+        public void setSequence(Integer sequence) {
+            this.sequence = sequence;
+        }
+
+        public String getAudioUrl() {
+            return audioUrl;
+        }
+
+        public void setAudioUrl(String audioUrl) {
+            this.audioUrl = audioUrl;
+        }
     }
 }
 

@@ -3,6 +3,7 @@ package com.yunting.service.impl;
 import com.yunting.dto.synthesis.OriginalSentenceSynthesisStatusDTO;
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.SynthesisResultDTO;
+import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
 import com.yunting.dto.synthesis.TtsSynthesisRequest;
 import com.yunting.exception.BusinessException;
 import com.yunting.mapper.BreakingSentenceMapper;
@@ -870,6 +871,80 @@ public class SynthesisServiceImpl implements SynthesisService {
                 .map(s -> {
                     OriginalSentenceSynthesisStatusDTO.AudioUrlItem item = 
                             new OriginalSentenceSynthesisStatusDTO.AudioUrlItem();
+                    item.setSequence(s.getSequence());
+                    item.setAudioUrl(s.getAudioUrl());
+                    return item;
+                })
+                .collect(Collectors.toList());
+        
+        result.setAudioUrlList(audioUrlList);
+        
+        return result;
+    }
+
+    @Override
+    public TaskSynthesisStatusDTO getTaskStatus(Long taskId) {
+        // 参数验证
+        ValidationUtil.notNull(taskId, "taskId不能为空");
+        
+        // 查询该任务下的所有断句
+        List<BreakingSentence> sentences = breakingSentenceMapper.selectByTaskId(taskId);
+        
+        // 构建返回结果
+        TaskSynthesisStatusDTO result = new TaskSynthesisStatusDTO();
+        
+        int total = sentences.size();
+        long completed = sentences.stream()
+                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.COMPLETED))
+                .count();
+        long failed = sentences.stream()
+                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.FAILED))
+                .count();
+        long processing = sentences.stream()
+                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PROCESSING))
+                .count();
+        long pending = sentences.stream()
+                .filter(s -> s.getSynthesisStatus() == null || 
+                           Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PENDING))
+                .count();
+        
+        // 计算进度（1-100）
+        int progress = total > 0 ? (int) Math.round((double) completed / total * 100) : 0;
+        
+        // 确定整体状态（使用 SynthesisStatus.Status 常量值）
+        Integer status;
+        if (failed > 0) {
+            // 如果有失败的断句，返回 3（合成失败）
+            status = SynthesisStatus.Status.FAILED;
+        } else if (processing > 0 || pending > 0) {
+            // 如果有进行中或待处理的断句，返回 1（合成中）
+            status = SynthesisStatus.Status.PROCESSING;
+        } else if (completed == total && total > 0) {
+            // 如果全部完成，返回 2（已合成）
+            status = SynthesisStatus.Status.COMPLETED;
+        } else {
+            // 否则返回 0（未合成）
+            status = SynthesisStatus.Status.PENDING;
+        }
+        
+        result.setStatus(status);
+        result.setProgress(progress);
+        result.setTotal(total);
+        result.setCompleted((int) completed);
+        result.setPending((int) (processing + pending));
+        
+        // 构建音频URL列表（只包含已完成的断句）
+        List<TaskSynthesisStatusDTO.AudioUrlItem> audioUrlList = sentences.stream()
+                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.COMPLETED) 
+                        && StringUtils.hasText(s.getAudioUrl()))
+                .sorted((s1, s2) -> {
+                    int seq1 = s1.getSequence() != null ? s1.getSequence() : 0;
+                    int seq2 = s2.getSequence() != null ? s2.getSequence() : 0;
+                    return Integer.compare(seq1, seq2);
+                })
+                .map(s -> {
+                    TaskSynthesisStatusDTO.AudioUrlItem item = 
+                            new TaskSynthesisStatusDTO.AudioUrlItem();
                     item.setSequence(s.getSequence());
                     item.setAudioUrl(s.getAudioUrl());
                     return item;
