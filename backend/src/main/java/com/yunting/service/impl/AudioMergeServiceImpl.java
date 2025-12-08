@@ -135,7 +135,7 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         updateTaskStatus(taskId, TaskStatus.Status.MERGE_PROCESSING);
         
         logger.info("音频合并任务已发送到消息队列，taskId: {}, mergeId: {}", taskId, audioMerge.getMergeId());
-        return toResponse(audioMerge);
+        return new AudioMergeResponseDTO(audioMerge.getMergeId());
     }
 
     @Override
@@ -302,27 +302,6 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         }
     }
 
-    private AudioMergeResponseDTO toResponse(AudioMerge audioMerge) {
-        AudioMergeResponseDTO dto = new AudioMergeResponseDTO();
-        dto.setMergeId(audioMerge.getMergeId());
-        dto.setTaskId(audioMerge.getTaskId());
-        dto.setMergedAudioUrl(audioMerge.getMergedAudioUrl());
-        dto.setAudioDuration(audioMerge.getAudioDuration());
-        dto.setStatus(mapStatus(audioMerge.getStatus()));
-        return dto;
-    }
-
-    private String mapStatus(Integer status) {
-        if (status == null) {
-            return "processing";
-        }
-        return switch (status) {
-            case AudioMergeStatus.Status.PROCESSING -> "processing";
-            case AudioMergeStatus.Status.COMPLETED -> "completed";
-            case AudioMergeStatus.Status.FAILED -> "failed";
-            default -> "unknown";
-        };
-    }
 
     /**
      * 下载音频文件到本地

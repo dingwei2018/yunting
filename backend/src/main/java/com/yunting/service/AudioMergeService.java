@@ -12,7 +12,7 @@ public interface AudioMergeService {
      * 
      * @param taskId 任务ID
      * @param request 合并请求
-     * @return 合并响应（包含merge_id，状态为processing）
+     * @return 合并响应（包含mergeId）
      */
     AudioMergeResponseDTO mergeAudio(Long taskId, AudioMergeRequest request);
     
