@@ -8,6 +8,8 @@ public class BreakingSentenceWithSettingDTO {
     private Integer charCount;
     private Integer sequence;
     private Integer synthesisStatus;
+    private String audioUrl;
+    private Integer audioDuration;
     private String ssml;
     private String jobId;
     private String createdAt;
@@ -68,6 +70,22 @@ public class BreakingSentenceWithSettingDTO {
 
     public void setSynthesisStatus(Integer synthesisStatus) {
         this.synthesisStatus = synthesisStatus;
+    }
+
+    public String getAudioUrl() {
+        return audioUrl;
+    }
+
+    public void setAudioUrl(String audioUrl) {
+        this.audioUrl = audioUrl;
+    }
+
+    public Integer getAudioDuration() {
+        return audioDuration;
+    }
+
+    public void setAudioDuration(Integer audioDuration) {
+        this.audioDuration = audioDuration;
     }
 
     public String getSsml() {

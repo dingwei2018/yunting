@@ -172,6 +172,8 @@ public class OriginalSentenceServiceImpl implements OriginalSentenceService {
         dto.setCharCount(breakingSentence.getCharCount() != null ? breakingSentence.getCharCount() : 0);
         dto.setSequence(breakingSentence.getSequence() != null ? breakingSentence.getSequence() : 0);
         dto.setSynthesisStatus(breakingSentence.getSynthesisStatus() != null ? breakingSentence.getSynthesisStatus() : 0);
+        dto.setAudioUrl(breakingSentence.getAudioUrl() != null ? breakingSentence.getAudioUrl() : "");
+        dto.setAudioDuration(breakingSentence.getAudioDuration() != null ? breakingSentence.getAudioDuration() : 0);
         dto.setSsml(breakingSentence.getSsml() != null ? breakingSentence.getSsml() : "");
         dto.setJobId(breakingSentence.getJobId() != null ? breakingSentence.getJobId() : "");
         dto.setCreatedAt(breakingSentence.getCreatedAt() != null ? 
