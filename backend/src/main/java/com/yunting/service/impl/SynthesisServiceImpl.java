@@ -416,6 +416,10 @@ public class SynthesisServiceImpl implements SynthesisService {
                 if (setting == null) {
                     setting = new SynthesisSetting();
                     setting.setBreakingSentenceId(breakingSentenceId);
+                    // 设置默认值，避免数据库 NOT NULL 约束错误
+                    setting.setSpeechRate(0);
+                    setting.setVolume(0);
+                    setting.setPitch(0);
                 }
                 
                 if (config.getVolume() != null) {
