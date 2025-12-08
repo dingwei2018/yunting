@@ -39,6 +39,7 @@ public class SynthesisSetConfigRequest {
      */
     public static class BreakingSentenceConfig {
         private Long breakingSentenceId;
+        private Integer sequence;
         private String content;
         private Integer volume;
         private String voiceId;
@@ -54,6 +55,14 @@ public class SynthesisSetConfigRequest {
 
         public void setBreakingSentenceId(Long breakingSentenceId) {
             this.breakingSentenceId = breakingSentenceId;
+        }
+
+        public Integer getSequence() {
+            return sequence;
+        }
+
+        public void setSequence(Integer sequence) {
+            this.sequence = sequence;
         }
 
         public String getContent() {

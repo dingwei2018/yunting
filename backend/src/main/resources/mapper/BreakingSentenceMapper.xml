@@ -138,5 +138,12 @@
             updated_at = NOW()
         WHERE breaking_sentence_id = #{breakingSentenceId}
     </update>
+
+    <update id="updateSequence">
+        UPDATE breaking_sentences
+        SET sequence = #{sequence},
+            updated_at = NOW()
+        WHERE breaking_sentence_id = #{breakingSentenceId}
+    </update>
 </mapper>
 

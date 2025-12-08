@@ -49,5 +49,8 @@ public interface BreakingSentenceMapper {
 
     int updateJobId(@Param("breakingSentenceId") Long breakingSentenceId,
                     @Param("jobId") String jobId);
+
+    int updateSequence(@Param("breakingSentenceId") Long breakingSentenceId,
+                       @Param("sequence") Integer sequence);
 }
 

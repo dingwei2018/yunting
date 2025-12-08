@@ -386,7 +386,8 @@ public class SynthesisServiceImpl implements SynthesisService {
                 newSentence.setOriginalSentenceId(request.getOriginalSentenceId());
                 newSentence.setContent(config.getContent());
                 newSentence.setCharCount(calculateCharCount(config.getContent()));
-                newSentence.setSequence(maxSequence + 1);
+                // 如果请求中提供了sequence，使用请求的值；否则使用最大值+1
+                newSentence.setSequence(config.getSequence() != null ? config.getSequence() : maxSequence + 1);
                 newSentence.setSynthesisStatus(SynthesisStatus.Status.PENDING);
                 
                 breakingSentenceMapper.insert(newSentence);
@@ -408,6 +409,11 @@ public class SynthesisServiceImpl implements SynthesisService {
             if (StringUtils.hasText(config.getContent())) {
                 int charCount = calculateCharCount(config.getContent());
                 breakingSentenceMapper.updateContent(breakingSentenceId, config.getContent(), charCount);
+            }
+
+            // 1.1 更新sequence到breaking_sentences表（如果提供了sequence字段）
+            if (config.getSequence() != null) {
+                breakingSentenceMapper.updateSequence(breakingSentenceId, config.getSequence());
             }
 
             // 2. 更新volume、voiceId、speed到synthesis_settings表
