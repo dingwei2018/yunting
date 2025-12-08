@@ -369,7 +369,7 @@ public class SynthesisServiceImpl implements SynthesisService {
             ValidationUtil.notNull(config.getBreakingSentenceId(), "breakingSentenceId不能为空");
             
             Long breakingSentenceId = config.getBreakingSentenceId();
-            boolean isNew = breakingSentenceId == -1L;
+            boolean isNew = breakingSentenceId < 0;
 
             // 如果是新增，需要先创建断句记录
             if (isNew) {
