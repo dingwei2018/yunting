@@ -121,7 +121,21 @@ public class TaskServiceImpl implements TaskService {
             breaking.setSynthesisStatus(SynthesisStatus.Status.PENDING); // 未合成
             breaking.setAudioUrl(null);
             breaking.setAudioDuration(null);
-            breaking.setSsml(null);
+            
+            // 生成默认的 SSML：在 content 首尾加入 speak 标签（仅当 content 不为空时）
+            String sentenceContent = original.getContent();
+            if (sentenceContent != null && !sentenceContent.isEmpty()) {
+                // 转义 XML 特殊字符
+                String escapedContent = sentenceContent.replace("&", "&amp;")
+                        .replace("<", "&lt;")
+                        .replace(">", "&gt;")
+                        .replace("\"", "&quot;")
+                        .replace("'", "&apos;");
+                breaking.setSsml("<speak>" + escapedContent + "</speak>");
+            } else {
+                breaking.setSsml(null);
+            }
+            
             breakingSentences.add(breaking);
         }
         breakingSentenceMapper.insertBatch(breakingSentences);
