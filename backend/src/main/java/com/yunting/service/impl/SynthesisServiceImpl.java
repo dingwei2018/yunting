@@ -1,5 +1,6 @@
 package com.yunting.service.impl;
 
+import com.yunting.dto.synthesis.OriginalSentenceSynthesisStatusDTO;
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.SynthesisResultDTO;
 import com.yunting.dto.synthesis.TtsSynthesisRequest;
@@ -39,6 +40,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -801,6 +803,76 @@ public class SynthesisServiceImpl implements SynthesisService {
         result.setAudioDuration(sentence.getAudioDuration());
         // 如果 synthesisStatus 为 null，默认为 0（未合成）
         result.setSynthesisStatus(sentence.getSynthesisStatus() != null ? sentence.getSynthesisStatus() : SynthesisStatus.Status.PENDING);
+        
+        return result;
+    }
+
+    @Override
+    public OriginalSentenceSynthesisStatusDTO getOriginalSentenceStatus(Long originalSentenceId) {
+        // 参数验证
+        ValidationUtil.notNull(originalSentenceId, "originalSentenceId不能为空");
+        
+        // 查询该拆句下的所有断句
+        List<BreakingSentence> sentences = breakingSentenceMapper.selectByOriginalSentenceId(originalSentenceId);
+        
+        // 构建返回结果
+        OriginalSentenceSynthesisStatusDTO result = new OriginalSentenceSynthesisStatusDTO();
+        
+        int total = sentences.size();
+        long completed = sentences.stream()
+                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.COMPLETED))
+                .count();
+        long failed = sentences.stream()
+                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.FAILED))
+                .count();
+        long processing = sentences.stream()
+                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PROCESSING))
+                .count();
+        long pending = sentences.stream()
+                .filter(s -> s.getSynthesisStatus() == null || 
+                           Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PENDING))
+                .count();
+        
+        // 计算进度（1-100）
+        int progress = total > 0 ? (int) Math.round((double) completed / total * 100) : 0;
+        
+        // 确定整体状态
+        String status;
+        if (failed > 0) {
+            status = "合成失败";
+        } else if (processing > 0 || pending > 0) {
+            status = "合成中";
+        } else if (completed == total && total > 0) {
+            status = "已完成";
+        } else {
+            status = "未开始";
+        }
+        
+        result.setStatus(status);
+        result.setProgress(progress);
+        result.setTotal(total);
+        result.setCompleted((int) completed);
+        result.setPending((int) (processing + pending));
+        
+        // 构建音频URL列表（只包含已完成的断句）
+        List<OriginalSentenceSynthesisStatusDTO.AudioUrlItem> audioUrlList = sentences.stream()
+                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.COMPLETED) 
+                        && StringUtils.hasText(s.getAudioUrl()))
+                .sorted((s1, s2) -> {
+                    int seq1 = s1.getSequence() != null ? s1.getSequence() : 0;
+                    int seq2 = s2.getSequence() != null ? s2.getSequence() : 0;
+                    return Integer.compare(seq1, seq2);
+                })
+                .map(s -> {
+                    OriginalSentenceSynthesisStatusDTO.AudioUrlItem item = 
+                            new OriginalSentenceSynthesisStatusDTO.AudioUrlItem();
+                    item.setSequence(s.getSequence());
+                    item.setAudioUrl(s.getAudioUrl());
+                    return item;
+                })
+                .collect(Collectors.toList());
+        
+        result.setAudioUrlList(audioUrlList);
         
         return result;
     }

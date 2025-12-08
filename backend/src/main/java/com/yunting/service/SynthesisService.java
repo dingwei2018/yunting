@@ -1,5 +1,6 @@
 package com.yunting.service;
 
+import com.yunting.dto.synthesis.OriginalSentenceSynthesisStatusDTO;
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.SynthesisResultDTO;
 
@@ -33,6 +34,15 @@ public interface SynthesisService {
      * @return 合成结果DTO，包含音频URL、时长和合成状态
      */
     SynthesisResultDTO getBreakingSentenceStatus(Long breakingSentenceId);
+
+    /**
+     * 获取拆句合成状态
+     * 给出拆句下所有断句的合成进度和已完成合成的音频文件下载地址和时长
+     * 
+     * @param originalSentenceId 拆句ID
+     * @return 拆句合成状态DTO，包含进度、统计信息和音频URL列表
+     */
+    OriginalSentenceSynthesisStatusDTO getOriginalSentenceStatus(Long originalSentenceId);
 }
 
 

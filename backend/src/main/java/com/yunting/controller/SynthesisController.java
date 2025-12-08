@@ -3,6 +3,7 @@ package com.yunting.controller;
 import com.yunting.common.ApiResponse;
 import com.yunting.common.ResponseUtil;
 import com.yunting.util.ValidationUtil;
+import com.yunting.dto.synthesis.OriginalSentenceSynthesisStatusDTO;
 import com.yunting.dto.synthesis.SynthesisBreakingSentenceRequest;
 import com.yunting.dto.synthesis.SynthesisOriginalSentenceRequest;
 import com.yunting.dto.synthesis.SynthesisResultDTO;
@@ -112,6 +113,21 @@ public class SynthesisController {
             @RequestParam(required = false) Long breakingSentenceId) {
         ValidationUtil.notNull(breakingSentenceId, "breakingSentenceId不能为空");
         SynthesisResultDTO result = synthesisService.getBreakingSentenceStatus(breakingSentenceId);
+        return ResponseUtil.success(result);
+    }
+
+    /**
+     * 获取拆句合成状态
+     * 给出拆句下所有断句的合成进度和已完成合成的音频文件下载地址和时长
+     * 
+     * @param originalSentenceId 拆句ID
+     * @return 拆句合成状态，包含进度、统计信息和音频URL列表
+     */
+    @GetMapping("/getOriginalSentenceStatus")
+    public ApiResponse<OriginalSentenceSynthesisStatusDTO> getOriginalSentenceStatus(
+            @RequestParam(required = false) Long originalSentenceId) {
+        ValidationUtil.notNull(originalSentenceId, "originalSentenceId不能为空");
+        OriginalSentenceSynthesisStatusDTO result = synthesisService.getOriginalSentenceStatus(originalSentenceId);
         return ResponseUtil.success(result);
     }
 }
