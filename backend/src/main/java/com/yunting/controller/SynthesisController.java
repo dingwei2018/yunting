@@ -5,14 +5,17 @@ import com.yunting.common.ResponseUtil;
 import com.yunting.util.ValidationUtil;
 import com.yunting.dto.synthesis.SynthesisBreakingSentenceRequest;
 import com.yunting.dto.synthesis.SynthesisOriginalSentenceRequest;
+import com.yunting.dto.synthesis.SynthesisResultDTO;
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.SynthesisTaskRequest;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
 import com.yunting.service.RocketMQTtsCallbackService;
 import com.yunting.service.SynthesisService;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -95,6 +98,21 @@ public class SynthesisController {
         } catch (Exception e) {
             return ResponseUtil.error(10500, "回调处理失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 获取断句合成状态
+     * 给出单句断句的合成状态和已完成合成的音频文件下载地址和时长
+     * 
+     * @param breakingSentenceId 断句ID
+     * @return 合成结果，包含音频URL、时长和合成状态
+     */
+    @GetMapping("/getBreakingSentenceStatus")
+    public ApiResponse<SynthesisResultDTO> getBreakingSentenceStatus(
+            @RequestParam(required = false) Long breakingSentenceId) {
+        ValidationUtil.notNull(breakingSentenceId, "breakingSentenceId不能为空");
+        SynthesisResultDTO result = synthesisService.getBreakingSentenceStatus(breakingSentenceId);
+        return ResponseUtil.success(result);
     }
 }
 

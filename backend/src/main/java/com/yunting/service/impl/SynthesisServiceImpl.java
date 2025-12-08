@@ -1,6 +1,7 @@
 package com.yunting.service.impl;
 
 import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
+import com.yunting.dto.synthesis.SynthesisResultDTO;
 import com.yunting.dto.synthesis.TtsSynthesisRequest;
 import com.yunting.exception.BusinessException;
 import com.yunting.mapper.BreakingSentenceMapper;
@@ -780,6 +781,28 @@ public class SynthesisServiceImpl implements SynthesisService {
             logger.error("更新任务状态失败，taskId: {}", taskId, e);
             // 不抛出异常，避免影响主流程
         }
+    }
+
+    @Override
+    public SynthesisResultDTO getBreakingSentenceStatus(Long breakingSentenceId) {
+        // 参数验证
+        ValidationUtil.notNull(breakingSentenceId, "breakingSentenceId不能为空");
+        
+        // 查询断句信息
+        BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
+        if (sentence == null) {
+            logger.warn("断句不存在，breakingSentenceId: {}", breakingSentenceId);
+            throw new IllegalArgumentException("断句不存在");
+        }
+        
+        // 构建返回结果
+        SynthesisResultDTO result = new SynthesisResultDTO();
+        result.setAudioUrl(sentence.getAudioUrl());
+        result.setAudioDuration(sentence.getAudioDuration());
+        // 如果 synthesisStatus 为 null，默认为 0（未合成）
+        result.setSynthesisStatus(sentence.getSynthesisStatus() != null ? sentence.getSynthesisStatus() : SynthesisStatus.Status.PENDING);
+        
+        return result;
     }
 }
 

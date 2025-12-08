@@ -1,17 +1,9 @@
 package com.yunting.dto.synthesis;
 
 public class SynthesisResultDTO {
-    private Long sentenceId;
     private String audioUrl;
     private Integer audioDuration;
-
-    public Long getSentenceId() {
-        return sentenceId;
-    }
-
-    public void setSentenceId(Long sentenceId) {
-        this.sentenceId = sentenceId;
-    }
+    private Integer synthesisStatus; // 合成状态（0-未合成，1-合成中，2-已合成，3-合成失败）
 
     public String getAudioUrl() {
         return audioUrl;
@@ -27,6 +19,14 @@ public class SynthesisResultDTO {
 
     public void setAudioDuration(Integer audioDuration) {
         this.audioDuration = audioDuration;
+    }
+
+    public Integer getSynthesisStatus() {
+        return synthesisStatus;
+    }
+
+    public void setSynthesisStatus(Integer synthesisStatus) {
+        this.synthesisStatus = synthesisStatus;
     }
 }
 
