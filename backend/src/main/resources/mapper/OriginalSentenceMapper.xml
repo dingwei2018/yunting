@@ -37,5 +37,13 @@
     <select id="countByTaskId" parameterType="long" resultType="long">
         SELECT COUNT(1) FROM original_sentences WHERE task_id = #{taskId}
     </select>
+
+    <select id="selectById" parameterType="long" resultMap="OriginalSentenceResultMap">
+        SELECT * FROM original_sentences WHERE original_sentence_id = #{originalSentenceId}
+    </select>
+
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM original_sentences WHERE original_sentence_id = #{originalSentenceId}
+    </delete>
 </mapper>
 

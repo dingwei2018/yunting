@@ -7,6 +7,7 @@ import com.yunting.model.*;
 import com.yunting.service.OriginalSentenceService;
 import com.yunting.util.ValidationUtil;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import java.time.format.DateTimeFormatter;
@@ -22,6 +23,7 @@ public class OriginalSentenceServiceImpl implements OriginalSentenceService {
     private final PauseSettingMapper pauseSettingMapper;
     private final PolyphonicSettingMapper polyphonicSettingMapper;
     private final ProsodySettingMapper prosodySettingMapper;
+    private final ReadingRuleApplicationMapper readingRuleApplicationMapper;
     private final TaskMapper taskMapper;
 
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -32,6 +34,7 @@ public class OriginalSentenceServiceImpl implements OriginalSentenceService {
                                        PauseSettingMapper pauseSettingMapper,
                                        PolyphonicSettingMapper polyphonicSettingMapper,
                                        ProsodySettingMapper prosodySettingMapper,
+                                       ReadingRuleApplicationMapper readingRuleApplicationMapper,
                                        TaskMapper taskMapper) {
         this.originalSentenceMapper = originalSentenceMapper;
         this.breakingSentenceMapper = breakingSentenceMapper;
@@ -39,6 +42,7 @@ public class OriginalSentenceServiceImpl implements OriginalSentenceService {
         this.pauseSettingMapper = pauseSettingMapper;
         this.polyphonicSettingMapper = polyphonicSettingMapper;
         this.prosodySettingMapper = prosodySettingMapper;
+        this.readingRuleApplicationMapper = readingRuleApplicationMapper;
         this.taskMapper = taskMapper;
     }
 
@@ -291,6 +295,53 @@ public class OriginalSentenceServiceImpl implements OriginalSentenceService {
         List<ProsodySetting> settings = prosodySettingMapper.selectByBreakingSentenceIds(breakingSentenceIds);
         return settings.stream()
                 .collect(Collectors.groupingBy(ProsodySetting::getBreakingSentenceId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteOriginalSentence(Long originalSentenceId) {
+        // 1. 参数验证
+        ValidationUtil.notNull(originalSentenceId, "originalSentenceId不能为空");
+        
+        // 2. 验证拆句是否存在
+        OriginalSentence originalSentence = originalSentenceMapper.selectById(originalSentenceId);
+        if (originalSentence == null) {
+            throw new BusinessException(10404, "拆句不存在");
+        }
+        
+        // 3. 查询该拆句下的所有断句
+        List<BreakingSentence> breakingSentences = breakingSentenceMapper.selectByOriginalSentenceId(originalSentenceId);
+        
+        // 4. 删除每个断句的所有配置
+        for (BreakingSentence breakingSentence : breakingSentences) {
+            Long breakingSentenceId = breakingSentence.getBreakingSentenceId();
+            
+            // 删除合成设置
+            synthesisSettingMapper.deleteByBreakingSentenceId(breakingSentenceId);
+            
+            // 删除停顿设置
+            pauseSettingMapper.deleteByBreakingSentenceId(breakingSentenceId);
+            
+            // 删除多音字设置
+            polyphonicSettingMapper.deleteByBreakingSentenceId(breakingSentenceId);
+            
+            // 删除韵律设置
+            prosodySettingMapper.deleteByBreakingSentenceId(breakingSentenceId);
+            
+            // 删除阅读规范应用
+            readingRuleApplicationMapper.deleteByBreakingSentenceId(breakingSentenceId);
+        }
+        
+        // 5. 删除所有断句
+        for (BreakingSentence breakingSentence : breakingSentences) {
+            breakingSentenceMapper.deleteById(breakingSentence.getBreakingSentenceId());
+        }
+        
+        // 6. 删除拆句本身
+        int deleted = originalSentenceMapper.deleteById(originalSentenceId);
+        if (deleted == 0) {
+            throw new BusinessException(10500, "删除拆句失败");
+        }
     }
 }
 

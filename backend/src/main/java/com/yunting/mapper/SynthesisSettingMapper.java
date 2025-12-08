@@ -12,6 +12,8 @@ public interface SynthesisSettingMapper {
     List<SynthesisSetting> selectByBreakingSentenceIds(@Param("ids") List<Long> breakingSentenceIds);
 
     int upsert(SynthesisSetting setting);
+
+    int deleteByBreakingSentenceId(@Param("breakingSentenceId") Long breakingSentenceId);
 }
 
 

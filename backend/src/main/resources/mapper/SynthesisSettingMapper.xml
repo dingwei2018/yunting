@@ -44,6 +44,10 @@
             updated_at = NOW()
     </insert>
 
+    <delete id="deleteByBreakingSentenceId" parameterType="long">
+        DELETE FROM synthesis_settings WHERE breaking_sentence_id = #{breakingSentenceId}
+    </delete>
+
 </mapper>
 
 

@@ -16,5 +16,9 @@ public interface OriginalSentenceMapper {
                                                @Param("limit") int limit);
 
     long countByTaskId(@Param("taskId") Long taskId);
+
+    OriginalSentence selectById(@Param("originalSentenceId") Long originalSentenceId);
+
+    int deleteById(@Param("originalSentenceId") Long originalSentenceId);
 }
 
