@@ -1,5 +1,6 @@
 package com.yunting.service.impl;
 
+import com.yunting.constant.TaskStatus;
 import com.yunting.dto.audio.AudioMergeMessage;
 import com.yunting.dto.audio.AudioMergeRequest;
 import com.yunting.dto.audio.AudioMergeResponseDTO;
@@ -69,6 +70,8 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         
         // 检查 FFmpeg 是否可用
         if (!ffmpegService.isFFmpegAvailable()) {
+            // 更新任务状态为合并失败
+            updateTaskStatus(taskId, TaskStatus.Status.MERGE_FAILED);
             throw new BusinessException(10500, "FFmpeg 不可用，无法合并音频");
         }
         
@@ -79,6 +82,8 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         
         List<BreakingSentence> candidates = breakingSentenceMapper.selectByTaskId(taskId);
         if (CollectionUtils.isEmpty(candidates)) {
+            // 更新任务状态为合并失败
+            updateTaskStatus(taskId, TaskStatus.Status.MERGE_FAILED);
             throw new BusinessException(10404, "任务暂无断句");
         }
 
@@ -89,6 +94,8 @@ public class AudioMergeServiceImpl implements AudioMergeService {
                 .collect(Collectors.toList());
 
         if (toMerge.isEmpty()) {
+            // 更新任务状态为合并失败
+            updateTaskStatus(taskId, TaskStatus.Status.MERGE_FAILED);
             throw new BusinessException(10404, "没有可合并的断句");
         }
 
@@ -117,8 +124,13 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         if (!success) {
             // 发送失败，更新状态为 failed
             updateMergeStatus(audioMerge.getMergeId(), 3); // 3-失败
+            // 更新任务状态为合并失败
+            updateTaskStatus(taskId, TaskStatus.Status.MERGE_FAILED);
             throw new BusinessException(10500, "发送合并任务到消息队列失败");
         }
+        
+        // 消息发送成功，更新任务状态为合并中
+        updateTaskStatus(taskId, TaskStatus.Status.MERGE_PROCESSING);
         
         logger.info("音频合并任务已发送到消息队列，taskId: {}, mergeId: {}", taskId, audioMerge.getMergeId());
         return toResponse(audioMerge);
@@ -135,6 +147,8 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         AudioMerge audioMerge = audioMergeMapper.selectById(mergeId);
         if (audioMerge == null) {
             logger.error("合并记录不存在，mergeId: {}", mergeId);
+            // 更新任务状态为合并失败
+            updateTaskStatus(taskId, TaskStatus.Status.MERGE_FAILED);
             return;
         }
         
@@ -143,6 +157,8 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         if (task == null) {
             logger.error("任务不存在，taskId: {}", taskId);
             updateMergeStatus(mergeId, 3); // 3-失败
+            // 更新任务状态为合并失败
+            updateTaskStatus(taskId, TaskStatus.Status.MERGE_FAILED);
             return;
         }
         
@@ -151,6 +167,8 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         if (CollectionUtils.isEmpty(candidates)) {
             logger.error("任务暂无断句，taskId: {}", taskId);
             updateMergeStatus(mergeId, 3); // 3-失败
+            // 更新任务状态为合并失败
+            updateTaskStatus(taskId, TaskStatus.Status.MERGE_FAILED);
             return;
         }
 
@@ -163,6 +181,8 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         if (toMerge.isEmpty()) {
             logger.error("没有可合并的断句，taskId: {}", taskId);
             updateMergeStatus(mergeId, 3); // 3-失败
+            // 更新任务状态为合并失败
+            updateTaskStatus(taskId, TaskStatus.Status.MERGE_FAILED);
             return;
         }
 
@@ -251,11 +271,21 @@ public class AudioMergeServiceImpl implements AudioMergeService {
             task.setMergedAudioDuration(mergedDuration);
             taskMapper.updateById(task);
             
+            // 音频文件地址返回成功，更新任务状态为合并成功
+            if (mergedUrl != null && StringUtils.hasText(mergedUrl)) {
+                updateTaskStatus(taskId, TaskStatus.Status.MERGE_SUCCESS);
+            } else {
+                // 如果mergedUrl为空，更新为失败
+                updateTaskStatus(taskId, TaskStatus.Status.MERGE_FAILED);
+            }
+            
             logger.info("音频合并处理完成，taskId: {}, mergeId: {}", taskId, mergeId);
             
         } catch (Exception e) {
             logger.error("合并音频失败，任务ID: {}, mergeId: {}", taskId, mergeId, e);
             updateMergeStatus(mergeId, 3); // 3-失败
+            // 更新任务状态为合并失败
+            updateTaskStatus(taskId, TaskStatus.Status.MERGE_FAILED);
         } finally {
             // 清理临时文件
             cleanupTempFiles(tempInputFiles);
@@ -367,6 +397,22 @@ public class AudioMergeServiceImpl implements AudioMergeService {
             }
         } catch (Exception e) {
             logger.error("更新合并状态失败，mergeId: {}", mergeId, e);
+        }
+    }
+
+    /**
+     * 更新任务状态
+     */
+    private void updateTaskStatus(Long taskId, Integer status) {
+        try {
+            Task task = taskMapper.selectById(taskId);
+            if (task != null) {
+                task.setStatus(status);
+                taskMapper.updateById(task);
+                logger.info("更新任务状态成功，taskId: {}, status: {}", taskId, status);
+            }
+        } catch (Exception e) {
+            logger.error("更新任务状态失败，taskId: {}, status: {}", taskId, status, e);
         }
     }
 
