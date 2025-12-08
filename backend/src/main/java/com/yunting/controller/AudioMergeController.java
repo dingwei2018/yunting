@@ -4,6 +4,7 @@ import com.yunting.common.ApiResponse;
 import com.yunting.common.ResponseUtil;
 import com.yunting.dto.audio.AudioMergeRequest;
 import com.yunting.dto.audio.AudioMergeResponseDTO;
+import com.yunting.dto.audio.AudioMergeStatusDTO;
 import com.yunting.service.AudioMergeService;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,9 +24,9 @@ public class AudioMergeController {
         return ResponseUtil.success(dto);
     }
 
-    @GetMapping("/audio/merges/merge")
-    public ApiResponse<AudioMergeResponseDTO> getMergeStatus(@RequestParam("mergeid") Long mergeId) {
-        AudioMergeResponseDTO dto = audioMergeService.getMergeStatus(mergeId);
+    @GetMapping("/getStatus")
+    public ApiResponse<AudioMergeStatusDTO> getStatus(@RequestParam("mergeId") Long mergeId) {
+        AudioMergeStatusDTO dto = audioMergeService.getMergeStatus(mergeId);
         return ResponseUtil.success(dto);
     }
 }

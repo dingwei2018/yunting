@@ -3,6 +3,7 @@ package com.yunting.service;
 import com.yunting.dto.audio.AudioMergeMessage;
 import com.yunting.dto.audio.AudioMergeRequest;
 import com.yunting.dto.audio.AudioMergeResponseDTO;
+import com.yunting.dto.audio.AudioMergeStatusDTO;
 
 public interface AudioMergeService {
 
@@ -21,14 +22,14 @@ public interface AudioMergeService {
      * @param mergeMessage 合并消息
      */
     void processAudioMerge(AudioMergeMessage mergeMessage);
-
+    
     /**
-     * 查询合并状态
+     * 获取合并状态
      * 
      * @param mergeId 合并ID
-     * @return 合并响应
+     * @return 合并状态信息
      */
-    AudioMergeResponseDTO getMergeStatus(Long mergeId);
+    AudioMergeStatusDTO getMergeStatus(Long mergeId);
 }
 
 

@@ -4,6 +4,7 @@ import com.yunting.constant.TaskStatus;
 import com.yunting.dto.audio.AudioMergeMessage;
 import com.yunting.dto.audio.AudioMergeRequest;
 import com.yunting.dto.audio.AudioMergeResponseDTO;
+import com.yunting.dto.audio.AudioMergeStatusDTO;
 import com.yunting.exception.BusinessException;
 import com.yunting.mapper.AudioMergeMapper;
 import com.yunting.mapper.BreakingSentenceMapper;
@@ -300,16 +301,6 @@ public class AudioMergeServiceImpl implements AudioMergeService {
         }
     }
 
-    @Override
-    public AudioMergeResponseDTO getMergeStatus(Long mergeId) {
-        ValidationUtil.notNull(mergeId, "mergeid不能为空");
-        AudioMerge audioMerge = audioMergeMapper.selectById(mergeId);
-        if (audioMerge == null) {
-            throw new BusinessException(10404, "合并任务不存在");
-        }
-        return toResponse(audioMerge);
-    }
-
     private AudioMergeResponseDTO toResponse(AudioMerge audioMerge) {
         AudioMergeResponseDTO dto = new AudioMergeResponseDTO();
         dto.setMergeId(audioMerge.getMergeId());
@@ -419,6 +410,24 @@ public class AudioMergeServiceImpl implements AudioMergeService {
     private String buildMergedAudioUrl(Long taskId) {
         // 临时URL，实际URL会在上传OBS后更新
         return "https://example.com/audio/task_" + taskId + "_merged.wav";
+    }
+
+    @Override
+    public AudioMergeStatusDTO getMergeStatus(Long mergeId) {
+        ValidationUtil.notNull(mergeId, "mergeId不能为空");
+        
+        AudioMerge audioMerge = audioMergeMapper.selectById(mergeId);
+        if (audioMerge == null) {
+            throw new BusinessException(10404, "合并记录不存在");
+        }
+        
+        AudioMergeStatusDTO dto = new AudioMergeStatusDTO();
+        dto.setTaskId(audioMerge.getTaskId());
+        dto.setMergedAudioUrl(audioMerge.getMergedAudioUrl());
+        dto.setAudioDuration(audioMerge.getAudioDuration());
+        dto.setStatus(audioMerge.getStatus() != null ? audioMerge.getStatus() : 1);
+        
+        return dto;
     }
 }
 
