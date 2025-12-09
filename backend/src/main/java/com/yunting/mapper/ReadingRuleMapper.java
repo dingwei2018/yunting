@@ -9,11 +9,15 @@ public interface ReadingRuleMapper {
 
     int insert(ReadingRule rule);
 
+    int update(ReadingRule rule);
+
     ReadingRule selectById(@Param("ruleId") Long ruleId);
 
-    List<ReadingRule> selectList(@Param("vocabularyId") String vocabularyId);
+    List<ReadingRule> selectList();
 
     List<Long> selectExistingIds(@Param("ids") List<Long> ids);
+
+    ReadingRule selectByRuleTypeAndPattern(@Param("ruleType") String ruleType, @Param("pattern") String pattern);
 }
 
 

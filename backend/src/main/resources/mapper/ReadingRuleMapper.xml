@@ -9,15 +9,23 @@
         <result property="pattern" column="pattern"/>
         <result property="ruleType" column="rule_type"/>
         <result property="ruleValue" column="rule_value"/>
-        <result property="vocabularyId" column="vocabulary_id"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <insert id="insert" parameterType="com.yunting.model.ReadingRule" useGeneratedKeys="true" keyProperty="ruleId">
-        INSERT INTO reading_rules (pattern, rule_type, rule_value, vocabulary_id, created_at, updated_at)
-        VALUES (#{pattern}, #{ruleType}, #{ruleValue}, #{vocabularyId}, NOW(), NOW())
+        INSERT INTO reading_rules (pattern, rule_type, rule_value, created_at, updated_at)
+        VALUES (#{pattern}, #{ruleType}, #{ruleValue}, NOW(), NOW())
     </insert>
+
+    <update id="update" parameterType="com.yunting.model.ReadingRule">
+        UPDATE reading_rules
+        SET pattern = #{pattern},
+            rule_type = #{ruleType},
+            rule_value = #{ruleValue},
+            updated_at = NOW()
+        WHERE rule_id = #{ruleId}
+    </update>
 
     <select id="selectById" parameterType="long" resultMap="ReadingRuleResultMap">
         SELECT * FROM reading_rules WHERE rule_id = #{ruleId}
@@ -26,11 +34,6 @@
     <select id="selectList" resultMap="ReadingRuleResultMap">
         SELECT *
         FROM reading_rules
-        <where>
-            <if test="vocabularyId != null">
-                vocabulary_id = #{vocabularyId}
-            </if>
-        </where>
         ORDER BY created_at DESC
     </select>
 
@@ -41,6 +44,12 @@
         <foreach collection="ids" item="id" open="(" separator="," close=")">
             #{id}
         </foreach>
+    </select>
+
+    <select id="selectByRuleTypeAndPattern" resultMap="ReadingRuleResultMap">
+        SELECT * FROM reading_rules
+        WHERE rule_type = #{ruleType} AND pattern = #{pattern}
+        LIMIT 1
     </select>
 
 </mapper>

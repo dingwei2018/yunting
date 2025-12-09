@@ -145,7 +145,6 @@ CREATE TABLE `reading_rules`  (
                                   `pattern` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
                                   `rule_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
                                   `rule_value` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-                                  `vocabulary_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '华为云读法ID',
                                   `created_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                   `updated_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),
                                   PRIMARY KEY (`rule_id`) USING BTREE

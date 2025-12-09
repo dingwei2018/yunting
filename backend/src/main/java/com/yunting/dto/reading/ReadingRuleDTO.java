@@ -7,7 +7,6 @@ public class ReadingRuleDTO {
     private String pattern;
     private String ruleType;
     private String ruleValue;
-    private String vocabularyId;
     private LocalDateTime createdAt;
 
     public Long getRuleId() {
@@ -40,14 +39,6 @@ public class ReadingRuleDTO {
 
     public void setRuleValue(String ruleValue) {
         this.ruleValue = ruleValue;
-    }
-
-    public String getVocabularyId() {
-        return vocabularyId;
-    }
-
-    public void setVocabularyId(String vocabularyId) {
-        this.vocabularyId = vocabularyId;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -7,7 +7,6 @@ public class ReadingRule {
     private String pattern;
     private String ruleType;
     private String ruleValue;
-    private String vocabularyId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -41,14 +40,6 @@ public class ReadingRule {
 
     public void setRuleValue(String ruleValue) {
         this.ruleValue = ruleValue;
-    }
-
-    public String getVocabularyId() {
-        return vocabularyId;
-    }
-
-    public void setVocabularyId(String vocabularyId) {
-        this.vocabularyId = vocabularyId;
     }
 
     public LocalDateTime getCreatedAt() {

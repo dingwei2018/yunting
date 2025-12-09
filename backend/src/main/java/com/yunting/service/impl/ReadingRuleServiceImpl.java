@@ -3,6 +3,7 @@ package com.yunting.service.impl;
 import com.yunting.constant.ReadingRuleApplicationType;
 import com.yunting.dto.reading.ReadingRuleApplyResponseDTO;
 import com.yunting.dto.reading.ReadingRuleCreateRequest;
+import com.yunting.dto.reading.ReadingRuleCreateResponseDTO;
 import com.yunting.dto.reading.ReadingRuleDTO;
 import com.yunting.dto.reading.ReadingRuleListResponseDTO;
 import com.yunting.exception.BusinessException;
@@ -42,21 +43,33 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
     }
 
     @Override
-    public ReadingRuleDTO createReadingRule(ReadingRuleCreateRequest request) {
+    public ReadingRuleCreateResponseDTO createReadingRule(ReadingRuleCreateRequest request) {
         ValidationUtil.notNull(request, "请求参数不能为空");
         validateCreateRequest(request);
+        
+        // 检查是否存在相同的 ruleType 和 pattern 的记录
+        ReadingRule existingRule = readingRuleMapper.selectByRuleTypeAndPattern(
+                request.getRuleType(), request.getPattern());
+        if (existingRule != null) {
+            throw new BusinessException(10400, "阅读规则已存在");
+        }
+        
         ReadingRule rule = new ReadingRule();
         rule.setPattern(request.getPattern());
         rule.setRuleType(request.getRuleType());
         rule.setRuleValue(request.getRuleValue());
-        rule.setVocabularyId(request.getVocabularyId());
+        
+        // 新增阅读规范
         readingRuleMapper.insert(rule);
-        return toDTO(rule);
+        
+        ReadingRuleCreateResponseDTO responseDTO = new ReadingRuleCreateResponseDTO();
+        responseDTO.setRuleId(rule.getRuleId());
+        return responseDTO;
     }
 
     @Override
-    public ReadingRuleListResponseDTO getReadingRules(String vocabularyId) {
-        List<ReadingRule> rules = readingRuleMapper.selectList(vocabularyId);
+    public ReadingRuleListResponseDTO getReadingRules() {
+        List<ReadingRule> rules = readingRuleMapper.selectList();
         ReadingRuleListResponseDTO responseDTO = new ReadingRuleListResponseDTO();
         responseDTO.setList(rules.stream().map(this::toDTO).collect(Collectors.toList()));
         return responseDTO;
@@ -113,7 +126,6 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
         dto.setPattern(rule.getPattern());
         dto.setRuleType(rule.getRuleType());
         dto.setRuleValue(rule.getRuleValue());
-        dto.setVocabularyId(rule.getVocabularyId());
         dto.setCreatedAt(rule.getCreatedAt());
         return dto;
     }

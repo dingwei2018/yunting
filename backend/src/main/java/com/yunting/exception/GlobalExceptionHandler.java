@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import jakarta.validation.ConstraintViolationException;
+import java.util.Map;
 
 /**
  * 全局异常处理
@@ -21,13 +22,13 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BusinessException.class)
-    public ApiResponse<Void> handleBusinessException(BusinessException ex) {
+    public ApiResponse<Map<String, Object>> handleBusinessException(BusinessException ex) {
         log.warn("Business exception: {}", ex.getMessage());
-        return ResponseUtil.error(ex.getCode(), ex.getMessage());
+        return ResponseUtil.errorWithEmptyData(ex.getCode(), ex.getMessage());
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
-    public ApiResponse<Void> handleValidationException(Exception ex) {
+    public ApiResponse<Map<String, Object>> handleValidationException(Exception ex) {
         String message = "请求参数不合法";
         if (ex instanceof MethodArgumentNotValidException manve && manve.getBindingResult().getFieldError() != null) {
             message = manve.getBindingResult().getFieldError().getDefaultMessage();
@@ -35,25 +36,25 @@ public class GlobalExceptionHandler {
             message = be.getBindingResult().getFieldError().getDefaultMessage();
         }
         log.warn("Validation failed: {}", message);
-        return ResponseUtil.error(10400, message);
+        return ResponseUtil.errorWithEmptyData(10400, message);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ApiResponse<Void> handleConstraintViolation(ConstraintViolationException ex) {
+    public ApiResponse<Map<String, Object>> handleConstraintViolation(ConstraintViolationException ex) {
         log.warn("Constraint violation: {}", ex.getMessage());
-        return ResponseUtil.error(10400, ex.getMessage());
+        return ResponseUtil.errorWithEmptyData(10400, ex.getMessage());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ApiResponse<Void> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
+    public ApiResponse<Map<String, Object>> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
         log.warn("HTTP message not readable", ex);
-        return ResponseUtil.error(10400, "请求参数格式错误");
+        return ResponseUtil.errorWithEmptyData(10400, "请求参数格式错误");
     }
 
     @ExceptionHandler(Exception.class)
-    public ApiResponse<Void> handleException(Exception ex) {
+    public ApiResponse<Map<String, Object>> handleException(Exception ex) {
         log.error("Unhandled exception", ex);
-        return ResponseUtil.error(10500, "服务器开小差了，请稍后再试");
+        return ResponseUtil.errorWithEmptyData(10500, "服务器开小差了，请稍后再试");
     }
 }
 
