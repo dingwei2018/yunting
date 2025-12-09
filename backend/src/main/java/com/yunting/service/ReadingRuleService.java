@@ -9,7 +9,7 @@ public interface ReadingRuleService {
 
     ReadingRuleDTO createReadingRule(ReadingRuleCreateRequest request);
 
-    ReadingRuleListResponseDTO getReadingRules(Long taskId, Integer scope);
+    ReadingRuleListResponseDTO getReadingRules(String vocabularyId);
 
     ReadingRuleApplyResponseDTO applyReadingRule(Long ruleId, Long taskId);
 }

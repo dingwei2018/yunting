@@ -4,11 +4,10 @@ import java.time.LocalDateTime;
 
 public class ReadingRule {
     private Long ruleId;
-    private Long taskId;
     private String pattern;
     private String ruleType;
     private String ruleValue;
-    private Integer scope;
+    private String vocabularyId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -18,14 +17,6 @@ public class ReadingRule {
 
     public void setRuleId(Long ruleId) {
         this.ruleId = ruleId;
-    }
-
-    public Long getTaskId() {
-        return taskId;
-    }
-
-    public void setTaskId(Long taskId) {
-        this.taskId = taskId;
     }
 
     public String getPattern() {
@@ -52,12 +43,12 @@ public class ReadingRule {
         this.ruleValue = ruleValue;
     }
 
-    public Integer getScope() {
-        return scope;
+    public String getVocabularyId() {
+        return vocabularyId;
     }
 
-    public void setScope(Integer scope) {
-        this.scope = scope;
+    public void setVocabularyId(String vocabularyId) {
+        this.vocabularyId = vocabularyId;
     }
 
     public LocalDateTime getCreatedAt() {

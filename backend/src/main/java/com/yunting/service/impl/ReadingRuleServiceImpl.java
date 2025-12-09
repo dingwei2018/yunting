@@ -1,5 +1,6 @@
 package com.yunting.service.impl;
 
+import com.yunting.constant.ReadingRuleApplicationType;
 import com.yunting.dto.reading.ReadingRuleApplyResponseDTO;
 import com.yunting.dto.reading.ReadingRuleCreateRequest;
 import com.yunting.dto.reading.ReadingRuleDTO;
@@ -25,9 +26,6 @@ import java.util.stream.Collectors;
 @Service
 public class ReadingRuleServiceImpl implements ReadingRuleService {
 
-    private static final int SCOPE_GLOBAL = 1;
-    private static final int SCOPE_TASK = 2;
-
     private final ReadingRuleMapper readingRuleMapper;
     private final TaskMapper taskMapper;
     private final BreakingSentenceMapper breakingSentenceMapper;
@@ -47,26 +45,18 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
     public ReadingRuleDTO createReadingRule(ReadingRuleCreateRequest request) {
         ValidationUtil.notNull(request, "请求参数不能为空");
         validateCreateRequest(request);
-        Task task = null;
-        if (SCOPE_TASK == request.getScope()) {
-            task = taskMapper.selectById(request.getTaskId());
-            if (task == null) {
-                throw new BusinessException(10404, "任务不存在");
-            }
-        }
         ReadingRule rule = new ReadingRule();
-        rule.setTaskId(SCOPE_TASK == request.getScope() ? request.getTaskId() : null);
         rule.setPattern(request.getPattern());
         rule.setRuleType(request.getRuleType());
         rule.setRuleValue(request.getRuleValue());
-        rule.setScope(request.getScope());
+        rule.setVocabularyId(request.getVocabularyId());
         readingRuleMapper.insert(rule);
         return toDTO(rule);
     }
 
     @Override
-    public ReadingRuleListResponseDTO getReadingRules(Long taskId, Integer scope) {
-        List<ReadingRule> rules = readingRuleMapper.selectList(taskId, scope);
+    public ReadingRuleListResponseDTO getReadingRules(String vocabularyId) {
+        List<ReadingRule> rules = readingRuleMapper.selectList(vocabularyId);
         ReadingRuleListResponseDTO responseDTO = new ReadingRuleListResponseDTO();
         responseDTO.setList(rules.stream().map(this::toDTO).collect(Collectors.toList()));
         return responseDTO;
@@ -84,9 +74,6 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
         if (task == null) {
             throw new BusinessException(10404, "任务不存在");
         }
-        if (SCOPE_TASK == rule.getScope() && (rule.getTaskId() == null || !rule.getTaskId().equals(taskId))) {
-            throw new BusinessException(10400, "阅读规范不属于当前任务");
-        }
         List<BreakingSentence> sentences = breakingSentenceMapper.selectByTaskId(taskId);
         if (CollectionUtils.isEmpty(sentences)) {
             throw new BusinessException(10404, "任务暂无断句");
@@ -96,7 +83,8 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
                 .map(sentence -> {
                     ReadingRuleApplication application = new ReadingRuleApplication();
                     application.setRuleId(ruleId);
-                    application.setBreakingSentenceId(sentence.getBreakingSentenceId());
+                    application.setFromId(sentence.getBreakingSentenceId());
+                    application.setType(ReadingRuleApplicationType.Type.BREAKING_SENTENCE);
                     return application;
                 }).collect(Collectors.toList());
         readingRuleApplicationMapper.insertBatch(applications);
@@ -117,22 +105,15 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
         if (!StringUtils.hasText(request.getRuleValue())) {
             throw new BusinessException(10400, "rule_value不能为空");
         }
-        if (request.getScope() == null || (request.getScope() != SCOPE_GLOBAL && request.getScope() != SCOPE_TASK)) {
-            throw new BusinessException(10400, "scope参数无效");
-        }
-        if (request.getScope() == SCOPE_TASK && request.getTaskId() == null) {
-            throw new BusinessException(10400, "scope为2时task_id必填");
-        }
     }
 
     private ReadingRuleDTO toDTO(ReadingRule rule) {
         ReadingRuleDTO dto = new ReadingRuleDTO();
         dto.setRuleId(rule.getRuleId());
-        dto.setTaskId(rule.getTaskId());
         dto.setPattern(rule.getPattern());
         dto.setRuleType(rule.getRuleType());
         dto.setRuleValue(rule.getRuleValue());
-        dto.setScope(rule.getScope());
+        dto.setVocabularyId(rule.getVocabularyId());
         dto.setCreatedAt(rule.getCreatedAt());
         return dto;
     }

@@ -1,19 +1,10 @@
 package com.yunting.dto.reading;
 
 public class ReadingRuleCreateRequest {
-    private Long taskId;
     private String pattern;
     private String ruleType;
     private String ruleValue;
-    private Integer scope;
-
-    public Long getTaskId() {
-        return taskId;
-    }
-
-    public void setTaskId(Long taskId) {
-        this.taskId = taskId;
-    }
+    private String vocabularyId;
 
     public String getPattern() {
         return pattern;
@@ -39,12 +30,12 @@ public class ReadingRuleCreateRequest {
         this.ruleValue = ruleValue;
     }
 
-    public Integer getScope() {
-        return scope;
+    public String getVocabularyId() {
+        return vocabularyId;
     }
 
-    public void setScope(Integer scope) {
-        this.scope = scope;
+    public void setVocabularyId(String vocabularyId) {
+        this.vocabularyId = vocabularyId;
     }
 }
 

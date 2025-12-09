@@ -5,7 +5,8 @@ import java.time.LocalDateTime;
 public class ReadingRuleApplication {
     private Long applicationId;
     private Long ruleId;
-    private Long breakingSentenceId;
+    private Long fromId;
+    private Integer type;
     private LocalDateTime createdAt;
 
     public Long getApplicationId() {
@@ -24,12 +25,20 @@ public class ReadingRuleApplication {
         this.ruleId = ruleId;
     }
 
-    public Long getBreakingSentenceId() {
-        return breakingSentenceId;
+    public Long getFromId() {
+        return fromId;
     }
 
-    public void setBreakingSentenceId(Long breakingSentenceId) {
-        this.breakingSentenceId = breakingSentenceId;
+    public void setFromId(Long fromId) {
+        this.fromId = fromId;
+    }
+
+    public Integer getType() {
+        return type;
+    }
+
+    public void setType(Integer type) {
+        this.type = type;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -11,7 +11,7 @@ public interface ReadingRuleMapper {
 
     ReadingRule selectById(@Param("ruleId") Long ruleId);
 
-    List<ReadingRule> selectList(@Param("taskId") Long taskId, @Param("scope") Integer scope);
+    List<ReadingRule> selectList(@Param("vocabularyId") String vocabularyId);
 
     List<Long> selectExistingIds(@Param("ids") List<Long> ids);
 }
