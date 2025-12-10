@@ -10,12 +10,14 @@ import com.yunting.mapper.BreakingSentenceMapper;
 import com.yunting.mapper.PauseSettingMapper;
 import com.yunting.mapper.PolyphonicSettingMapper;
 import com.yunting.mapper.ProsodySettingMapper;
+import com.yunting.mapper.ReadingRuleApplicationMapper;
 import com.yunting.mapper.SynthesisSettingMapper;
 import com.yunting.mapper.TaskMapper;
 import com.yunting.model.BreakingSentence;
 import com.yunting.model.PauseSetting;
 import com.yunting.model.PolyphonicSetting;
 import com.yunting.model.ProsodySetting;
+import com.yunting.model.ReadingRuleApplication;
 import com.yunting.model.SynthesisSetting;
 import com.yunting.model.Task;
 import com.yunting.service.SynthesisService;
@@ -23,6 +25,7 @@ import com.yunting.service.ObsStorageService;
 import com.yunting.service.RocketMQTtsSynthesisService;
 import com.yunting.util.SynthesisStatusUtil;
 import com.yunting.util.ValidationUtil;
+import com.yunting.constant.ReadingRuleApplicationType;
 import com.yunting.constant.SynthesisStatus;
 import com.yunting.constant.TaskStatus;
 import org.springframework.beans.factory.annotation.Value;
@@ -61,6 +64,7 @@ public class SynthesisServiceImpl implements SynthesisService {
     private final PauseSettingMapper pauseSettingMapper;
     private final PolyphonicSettingMapper polyphonicSettingMapper;
     private final ProsodySettingMapper prosodySettingMapper;
+    private final ReadingRuleApplicationMapper readingRuleApplicationMapper;
     private final ObsStorageService obsStorageService;
     private final RocketMQTtsSynthesisService rocketMQTtsSynthesisService;
 
@@ -101,6 +105,7 @@ public class SynthesisServiceImpl implements SynthesisService {
                                 PauseSettingMapper pauseSettingMapper,
                                 PolyphonicSettingMapper polyphonicSettingMapper,
                                 ProsodySettingMapper prosodySettingMapper,
+                                ReadingRuleApplicationMapper readingRuleApplicationMapper,
                                 ObsStorageService obsStorageService,
                                 RocketMQTtsSynthesisService rocketMQTtsSynthesisService) {
         this.breakingSentenceMapper = breakingSentenceMapper;
@@ -109,6 +114,7 @@ public class SynthesisServiceImpl implements SynthesisService {
         this.pauseSettingMapper = pauseSettingMapper;
         this.polyphonicSettingMapper = polyphonicSettingMapper;
         this.prosodySettingMapper = prosodySettingMapper;
+        this.readingRuleApplicationMapper = readingRuleApplicationMapper;
         this.obsStorageService = obsStorageService;
         this.rocketMQTtsSynthesisService = rocketMQTtsSynthesisService;
     }
@@ -518,6 +524,26 @@ public class SynthesisServiceImpl implements SynthesisService {
                 }
                 if (!prosodySettings.isEmpty()) {
                     prosodySettingMapper.insertBatch(prosodySettings);
+                }
+            }
+
+            // 5.1 更新readRule到reading_rule_applications表（先删除旧的，再插入新的）
+            readingRuleApplicationMapper.deleteByBreakingSentenceId(breakingSentenceId);
+            if (!CollectionUtils.isEmpty(config.getReadRule())) {
+                List<ReadingRuleApplication> readingRuleApplications = new ArrayList<>();
+                for (SynthesisSetConfigRequest.ReadRuleConfig readRuleConfig : config.getReadRule()) {
+                    // 只处理isOpen为true的规则
+                    if (readRuleConfig.getIsOpen() != null && readRuleConfig.getIsOpen() 
+                            && readRuleConfig.getRuleId() != null) {
+                        ReadingRuleApplication application = new ReadingRuleApplication();
+                        application.setRuleId(readRuleConfig.getRuleId());
+                        application.setFromId(breakingSentenceId);
+                        application.setType(ReadingRuleApplicationType.Type.BREAKING_SENTENCE);
+                        readingRuleApplications.add(application);
+                    }
+                }
+                if (!readingRuleApplications.isEmpty()) {
+                    readingRuleApplicationMapper.insertBatch(readingRuleApplications);
                 }
             }
 

@@ -18,6 +18,10 @@ public interface ReadingRuleMapper {
     List<Long> selectExistingIds(@Param("ids") List<Long> ids);
 
     ReadingRule selectByRuleTypeAndPattern(@Param("ruleType") String ruleType, @Param("pattern") String pattern);
+
+    List<ReadingRule> selectPage(@Param("taskId") Long taskId, @Param("ruleType") String ruleType, @Param("offset") int offset, @Param("limit") int limit);
+
+    long count(@Param("taskId") Long taskId, @Param("ruleType") String ruleType);
 }
 
 

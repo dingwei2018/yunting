@@ -12,6 +12,8 @@ public interface ReadingRuleApplicationMapper {
     int insertBatch(@Param("list") List<ReadingRuleApplication> list);
 
     int deleteByRuleId(@Param("ruleId") Long ruleId);
+
+    List<Long> selectRuleIdsByTaskId(@Param("taskId") Long taskId);
 }
 
 

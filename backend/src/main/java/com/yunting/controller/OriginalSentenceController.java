@@ -2,6 +2,7 @@ package com.yunting.controller;
 
 import com.yunting.common.ApiResponse;
 import com.yunting.common.ResponseUtil;
+import com.yunting.dto.original.OriginalSentenceDeleteRequest;
 import com.yunting.dto.original.OriginalSentenceListResponseDTO;
 import com.yunting.service.OriginalSentenceService;
 import com.yunting.util.ValidationUtil;
@@ -28,9 +29,10 @@ public class OriginalSentenceController {
 
     @PostMapping("/delete")
     public ApiResponse<String> deleteOriginalSentence(
-            @RequestParam("originalSentenceId") Long originalSentenceId) {
-        ValidationUtil.notNull(originalSentenceId, "originalSentenceId不能为空");
-        originalSentenceService.deleteOriginalSentence(originalSentenceId);
+            @RequestBody OriginalSentenceDeleteRequest request) {
+        ValidationUtil.notNull(request, "请求参数不能为空");
+        ValidationUtil.notNull(request.getOriginalSentenceId(), "originalSentenceId不能为空");
+        originalSentenceService.deleteOriginalSentence(request.getOriginalSentenceId());
         return ResponseUtil.success("删除成功");
     }
 }

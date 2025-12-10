@@ -8,7 +8,7 @@ public class VoiceConfigDTO {
     private String voiceType;
     private Integer sortOrder;
     
-    @JsonProperty("header_url")
+    @JsonProperty("avatar_url")
     private String headerUrl;
 
     public String getVoiceId() {

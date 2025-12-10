@@ -52,6 +52,30 @@
         LIMIT 1
     </select>
 
+    <select id="selectPage" resultMap="ReadingRuleResultMap">
+        SELECT *
+        FROM reading_rules
+        <where>
+            <if test="ruleType != null and ruleType != ''">
+                AND rule_type = #{ruleType}
+            </if>
+            <!-- taskId暂时不支持，因为reading_rules表没有taskId字段 -->
+        </where>
+        ORDER BY created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM reading_rules
+        <where>
+            <if test="ruleType != null and ruleType != ''">
+                AND rule_type = #{ruleType}
+            </if>
+            <!-- taskId暂时不支持，因为reading_rules表没有taskId字段 -->
+        </where>
+    </select>
+
 </mapper>
 
 

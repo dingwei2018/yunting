@@ -48,6 +48,7 @@ public class SynthesisSetConfigRequest {
         private List<PhonemeConfig> phonemeList;
         private List<ProsodyConfig> prosodyList;
         private List<SilenceConfig> silenceList;
+        private List<ReadRuleConfig> readRule;
 
         public Long getBreakingSentenceId() {
             return breakingSentenceId;
@@ -127,6 +128,14 @@ public class SynthesisSetConfigRequest {
 
         public void setSilenceList(List<SilenceConfig> silenceList) {
             this.silenceList = silenceList;
+        }
+
+        public List<ReadRuleConfig> getReadRule() {
+            return readRule;
+        }
+
+        public void setReadRule(List<ReadRuleConfig> readRule) {
+            this.readRule = readRule;
         }
     }
 
@@ -232,6 +241,39 @@ public class SynthesisSetConfigRequest {
 
         public void setDuration(Integer duration) {
             this.duration = duration;
+        }
+    }
+
+    /**
+     * 阅读规范配置
+     */
+    public static class ReadRuleConfig {
+        private Long ruleId;
+        private String partern; // 注意：文档中是 "partern" 不是 "pattern"
+        private Boolean isOpen;
+
+        public Long getRuleId() {
+            return ruleId;
+        }
+
+        public void setRuleId(Long ruleId) {
+            this.ruleId = ruleId;
+        }
+
+        public String getPartern() {
+            return partern;
+        }
+
+        public void setPartern(String partern) {
+            this.partern = partern;
+        }
+
+        public Boolean getIsOpen() {
+            return isOpen;
+        }
+
+        public void setIsOpen(Boolean isOpen) {
+            this.isOpen = isOpen;
         }
     }
 }

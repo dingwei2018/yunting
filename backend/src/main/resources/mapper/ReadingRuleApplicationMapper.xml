@@ -20,6 +20,15 @@
         </foreach>
     </insert>
 
+    <select id="selectRuleIdsByTaskId" resultType="long">
+        SELECT DISTINCT rra.rule_id
+        FROM reading_rule_applications rra
+        <if test="taskId != null">
+            INNER JOIN breaking_sentences bs ON rra.from_id = bs.breaking_sentence_id
+            WHERE bs.task_id = #{taskId}
+        </if>
+    </select>
+
 </mapper>
 
 
