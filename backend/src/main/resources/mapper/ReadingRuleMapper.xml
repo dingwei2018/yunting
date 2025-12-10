@@ -56,7 +56,7 @@
         SELECT *
         FROM reading_rules
         <where>
-            <if test="ruleType != null and ruleType != ''">
+            <if test="ruleType != null">
                 AND rule_type = #{ruleType}
             </if>
             <!-- taskId暂时不支持，因为reading_rules表没有taskId字段 -->
@@ -69,7 +69,7 @@
         SELECT COUNT(*)
         FROM reading_rules
         <where>
-            <if test="ruleType != null and ruleType != ''">
+            <if test="ruleType != null">
                 AND rule_type = #{ruleType}
             </if>
             <!-- taskId暂时不支持，因为reading_rules表没有taskId字段 -->

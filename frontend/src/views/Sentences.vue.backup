@@ -1,0 +1,3582 @@
+.sentence-row {
+  margin-bottom: 12px;
+}
+
+<template>
+  <div class="sentences-page">
+    <div class="page-header">
+      <h2>音频精修</h2>
+      <div class="header-actions">
+        <el-button 
+          type="primary" 
+          @click="handleSynthesizeAll" 
+          :loading="synthesizingAll"
+          :disabled="!canSynthesizeAll"
+        >
+          合成全部音频
+        </el-button>
+        <el-button 
+          type="primary" 
+          @click="handleMergeAudio" 
+          :loading="merging"
+          :disabled="!canMergeAudio"
+        >
+          合并音频
+        </el-button>
+      </div>
+    </div>
+
+    <el-card v-loading="loading" class="sentences-card">
+      <div v-if="sentences.length === 0 && !loading" class="empty-state">
+        <el-empty description="暂无句子数据" />
+      </div>
+
+      <div v-else class="sentence-list" @scroll="handleScroll">
+        <div
+          v-for="(sentence, index) in rootSentences"
+          :key="sentence.sentence_id"
+          class="sentence-item"
+        >
+          <div class="sentence-layout">
+            <div class="sentence-main">
+              <div class="sentence-header">
+                <span class="sentence-number">拆句{{ index + 1 }}</span>
+                <span class="sentence-duration" v-if="sentence.duration">
+                  {{ formatDuration(sentence.duration) }}
+                </span>
+              </div>
+
+              <div class="sentence-row">
+                <div class="sentence-content">
+                  <div class="sentence-text-row">
+                    <div class="sentence-text">
+                      {{ getCombinedSentenceContentReactive(sentence) }}
+                    </div>
+                    <div class="sentence-links">
+                      <SentenceActionLinks
+                        :audio-url="sentence.audio_url"
+                        :synthesis-status="getOriginalSentenceSynthesisStatus(sentence.sentence_id)"
+                        :show-insert-after="false"
+                        @play="handlePlayOriginalSentence(sentence)"
+                        @synthesize="handleResynthesizeOriginalSentence(sentence.sentence_id)"
+                        @delete="handleDelete(sentence.sentence_id)"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sentence-quick-actions">
+              <el-button link type="primary" @click="toggleEdit(sentence)">
+                {{ editingSentenceId === sentence.sentence_id ? '收起精修' : '编辑' }}
+              </el-button>
+            </div>
+          </div>
+
+          <transition name="fade">
+            <div
+              v-if="editingSentenceId === sentence.sentence_id"
+              class="editing-panel"
+            >
+              <SentenceTuningPanel
+                :voice-categories="voiceCategories"
+                :voice-options="voiceOptions"
+                :active-voice-category="activeVoiceCategory"
+                :custom-options="customOptions"
+                :editing-form="editingForm"
+                :custom-disabled="customDisabledState"
+                :active-actions="activeCustomActions"
+                :selection-context="currentSelectionContext"
+                @update:activeVoiceCategory="handleUpdateCategory"
+                @select-voice="selectVoice"
+                @custom-action="handleCustomAction"
+                @request-local-speed="handleRequestLocalSpeed"
+                @clear-text="() => handleClearText(sentence)"
+                @synthesize-all="handleSynthesizeAllBreakingSentences"
+              />
+
+              <SubSentenceEditorList
+                :subs="getBreakingSentencesFromApi(sentence.sentence_id)"
+                :editing-sub-sentence-id="editingSubSentenceId"
+                :get-polyphonic-markers="getPolyphonicMarkers"
+                :is-polyphonic-mode-active="isPolyphonicModeActive"
+                :set-editor-ref="setEditorRef"
+                :get-breaking-sentence-status="getBreakingSentenceSynthesisStatus"
+                @select-sub="selectSubSentence"
+                @editor-selection-change="({ sub, payload }) => handleEditorSelectionChange(sub, payload)"
+                @editor-content-change="(sub) => handleEditorContentChange(sub)"
+                @polyphonic-hover="({ sub, payload }) => handlePolyphonicHover(sub, payload)"
+                @editor-focus="(sub) => handleEditorFocus(sub)"
+                @speed-segments-change="handleSpeedSegmentsChange"
+                @play="handlePlay"
+                @synthesize="handleResynthesizeBreakingSentence"
+                @insert-after="handleInsertAfter"
+                @delete="handleDelete"
+              />
+              <div class="textarea-actions">
+                <div class="textarea-buttons">
+                  <el-button @click="closeEditing">取消</el-button>
+                  <el-button type="primary" @click="handleSaveCurrent">
+                    保存当前修改
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </transition>
+
+          <!-- 音频播放器 -->
+          <audio
+            v-if="sentence.audio_url"
+            :ref="el => setAudioRef(sentence.sentence_id, el)"
+            :src="sentence.audio_url"
+            preload="none"
+          />
+        </div>
+      </div>
+    </el-card>
+    
+    <!-- 分页状态提示 - 置于页面最下端 -->
+    <div v-if="loadingMore" class="loading-more">
+      <el-icon class="is-loading"><Loading /></el-icon>
+      <span>加载中...</span>
+    </div>
+    <div v-else-if="!hasMore && sentences.length > 0" class="no-more">
+      没有更多数据了
+    </div>
+
+    <transition name="fade">
+      <PolyphonicTooltip
+        v-if="polyphonicTooltip.visible"
+        :visible="polyphonicTooltip.visible"
+        :position="polyphonicTooltip.position"
+        :char="polyphonicTooltip.char"
+        :options="polyphonicTooltip.options"
+        :selected="polyphonicTooltip.selected"
+        @mouseenter="handleTooltipMouseEnter"
+        @mouseleave="handleTooltipMouseLeave"
+        @select="handlePolyphonicOptionSelect"
+      />
+    </transition>
+
+    <!-- merge-footer 已隐藏 -->
+    <!-- <div class="merge-footer" style="display: none;">
+      <el-button type="primary" size="large" @click="handleSynthesizeAll" :loading="synthesizingAll">
+        合成全部音频
+      </el-button>
+      <el-button type="primary" size="large" @click="handleMergeAudio" :loading="merging">
+        合并音频
+      </el-button>
+    </div> -->
+
+    <SplitStandardDialog
+      :visible="splitStandardDialogVisible"
+      :type="splitStandardType"
+      :char-count="splitStandardCharCount"
+      @update:visible="(val) => (splitStandardDialogVisible = val)"
+      @update:type="(val) => (splitStandardType = val)"
+      @update:char-count="(val) => (splitStandardCharCount = val)"
+      @confirm="handleSplitStandardConfirm"
+      @close="handleSplitStandardDialogClose"
+    />
+
+    <el-dialog
+      v-model="localSpeedDialog.visible"
+      title="局部语速调整"
+      width="420px"
+      :close-on-click-modal="false"
+    >
+      <div class="local-speed-dialog__body">
+        <div class="local-speed-dialog__info">
+          已选字符：{{ localSpeedDialog.rangeLength }} 个
+        </div>
+        <el-slider
+          v-model="localSpeedDialog.value"
+          :min="-10"
+          :max="10"
+          :step="1"
+          show-input
+        />
+      </div>
+      <template #footer>
+        <el-button @click="handleCancelLocalSpeed">取 消</el-button>
+        <el-button type="primary" @click="handleConfirmLocalSpeed">确 定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 合成进度对话框 -->
+    <el-dialog
+      v-model="taskSynthesisProgress.visible"
+      title="合成进度"
+      width="500px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+      class="synthesis-progress-dialog"
+    >
+      <div class="progress-content">
+        <div class="progress-header">
+          <h3>正在合成全部音频</h3>
+        </div>
+        <div class="progress-info">
+          <el-progress
+            :percentage="taskSynthesisProgress.progress"
+            :status="taskSynthesisProgress.status === 'completed' ? 'success' : taskSynthesisProgress.status === 'failed' ? 'exception' : undefined"
+            :stroke-width="8"
+          />
+          <div class="progress-text">
+            <span>已完成：{{ taskSynthesisProgress.completed }} / {{ taskSynthesisProgress.total }}</span>
+            <span v-if="taskSynthesisProgress.pending > 0">待处理：{{ taskSynthesisProgress.pending }}</span>
+          </div>
+          <div class="progress-status">
+            <span v-if="taskSynthesisProgress.status === 'processing'">合成中，请稍候...</span>
+            <span v-else-if="taskSynthesisProgress.status === 'completed'" class="success">合成完成！</span>
+            <span v-else-if="taskSynthesisProgress.status === 'failed'" class="error">合成失败</span>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onBeforeUnmount, reactive, computed, watch, h, defineComponent, defineOptions, inject } from 'vue'
+
+defineOptions({
+  name: 'Sentences'
+})
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox, ElRadioGroup, ElRadio, ElDialog, ElInput, ElProgress } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
+import { polyphonic } from 'pinyin-pro'
+import SentenceTuningPanel from '@/components/SentenceTuningPanel.vue'
+import SentenceActionLinks from '@/components/SentenceActionLinks.vue'
+import SubSentenceEditorList from '@/components/SubSentenceEditorList.vue'
+import SplitStandardDialog from '@/components/SplitStandardDialog.vue'
+import PolyphonicTooltip from '@/components/PolyphonicTooltip.vue'
+import { useSentencesRepository } from '@/composables/useSentencesRepository'
+import { convertBreakingSentenceToApi, createSubSentence, parsePauseMarkersFromContent } from '@/models/sentenceModels'
+import { synthesizeOriginalSentence, getOriginalSentenceStatus, synthesizeBreakingSentence, getBreakingSentenceStatus, setConfig, synthesizeTask, getTaskStatus } from '@/api/synthesis'
+import { getTaskDetail } from '@/api/task'
+import { SentenceController } from '@/controllers/sentenceController'
+
+const route = useRoute()
+const router = useRouter()
+const sentencesRepository = useSentencesRepository()
+
+// 注入全局音频播放器
+const audioPlayer = inject('audioPlayer', null)
+const {
+  loading,
+  merging,
+  sentences,
+  taskId,
+  hasMore,
+  loadingMore,
+  loadSentences,
+  loadMoreSentences,
+  handleMergeAudio: mergeAudioTask,
+  insertAfter: insertSentenceAfterLocal,
+  deleteSentence: deleteSentenceApi,
+  synthesizeSentence: synthesizeSentenceApi,
+  getSentence: getSentenceApi,
+  updateSentence: updateSentenceApi
+} = sentencesRepository
+
+// 用于存储断句标准选择的值
+const splitStandardType = ref('punctuation')
+const splitStandardCharCount = ref(50) // 默认字符数
+const splitStandardDialogVisible = ref(false)
+const splitStandardContext = ref(null) // 存储当前操作的上下文
+const audioRefs = ref({})
+const editingSentenceId = ref(null)
+const editingSubSentenceId = ref(null)
+const pendingSelectSubSentenceId = ref(null)
+
+// 拆句合成状态管理
+const originalSentenceStatus = ref({}) // { [originalSentenceId]: { status, audioUrlList, timer } }
+// 断句合成状态管理
+const breakingSentenceStatus = ref({}) // { [breakingSentenceId]: { status, audioUrl, timer } }
+// 当前正在播放的音频信息
+const currentPlayingAudio = ref(null) // { sentenceId, audioList, currentIndex, audioElements }
+// 合成全部音频的加载状态
+const synthesizingAll = ref(false)
+// 任务状态
+const taskStatus = ref(null) // 0-拆句完成，1-语音合成中，2-语音合成成功，3-语音合成失败，4-语音合并中，5-语音合并成功，6-语音合并失败
+const taskMergeId = ref(null) // 合并ID，用于跳转
+// 任务合成进度遮罩状态
+const taskSynthesisProgress = ref({
+  visible: false,
+  status: '', // 'processing', 'completed', 'failed'
+  progress: 0, // 0-100
+  total: 0,
+  completed: 0,
+  pending: 0,
+  timer: null
+})
+// 保存原始拆句列表数据，用于获取 synthesisStatus
+const originalSentenceListData = ref(null) // 保存 getOriginalSentenceList 返回的原始数据
+// 保存数据备份，用于取消时恢复
+const backupSentences = ref(null) // 保存 sentences 的深拷贝备份
+const backupOriginalSentenceListData = ref(null) // 保存 originalSentenceListData 的深拷贝备份
+
+const editingForm = reactive({
+  sentenceId: '',
+  content: '',
+  voice: 'default',
+  volume: 70,
+  speed: 0,
+  pitch: 50
+})
+
+const clampVolume = (value) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 70
+  return Math.min(100, Math.max(0, Math.round(value)))
+}
+
+const clampSpeed = (value) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) return 0
+  return Math.min(10, Math.max(-10, Math.round(value)))
+}
+
+const editorRefs = reactive({})
+const pauseEligibilityMap = reactive({})
+const selectionStateMap = reactive({})
+const polyphonicModeMap = reactive({})
+const polyphonicStateMap = reactive({})
+const polyphonicTooltip = reactive({
+  visible: false,
+  sentenceId: null,
+  markerId: '',
+  char: '',
+  options: [],
+  selected: '',
+  position: { x: 0, y: 0 }
+})
+let polyphonicTooltipTimer = null
+const isTooltipHovering = ref(false)
+
+const findSentenceById = (id) => {
+  if (id == null) return null
+  // 使用 == 而不是 ===，以处理字符串和数字的匹配
+  return sentences.value.find((item) => item.sentence_id == id || String(item.sentence_id) === String(id))
+}
+
+// 统一的 ID 生成器：为新增的断句生成唯一的负数 ID（-1, -2, -3...）
+// 确保新增 ID 的唯一性，排序只依赖于 display_order，不依赖于 ID
+const generateNewSentenceId = () => {
+  // 找到所有负数 ID（新增的断句）
+  const existingNegativeIds = sentences.value
+    .filter(item => typeof item.sentence_id === 'number' && item.sentence_id < 0)
+    .map(item => item.sentence_id)
+  
+  // 如果没有任何负数 ID，从 -1 开始
+  if (existingNegativeIds.length === 0) {
+    return -1
+  }
+  
+  // 找到最小的负数 ID（最接近 0 的负数）
+  const minNegativeId = Math.min(...existingNegativeIds)
+  
+  // 返回比最小负数 ID 小 1 的 ID（更小的负数）
+  return minNegativeId - 1
+}
+
+// 创建句子控制器实例
+// sentenceController 将在所有依赖函数定义后初始化
+let sentenceController = null
+
+const currentSubSentence = computed(() =>
+  findSentenceById(editingSubSentenceId.value)
+)
+
+const isPauseEnabled = computed(() =>
+  editingSubSentenceId.value
+    ? !!pauseEligibilityMap[editingSubSentenceId.value]
+    : false
+)
+
+const customDisabledState = computed(() => ({
+  pause: !isPauseEnabled.value
+}))
+
+const activeCustomActions = computed(() => ({
+  polyphonic: editingSubSentenceId.value
+    ? !!polyphonicModeMap[editingSubSentenceId.value]
+    : false
+}))
+
+const rootSentences = computed(() =>
+  sentences.value.filter((item) => !item.parent_id || item.parent_id === 0)
+)
+
+const getSubSentences = (parentId) => {
+  const parent = findSentenceById(parentId)
+  if (!parent) return []
+  const children = sentences.value
+    .filter((item) => item.parent_id === parentId)
+    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+  return [parent, ...children]
+}
+
+// 从接口数据中获取断句列表（用于编辑时显示，使用接口的 breakingSentence 数据）
+const getBreakingSentencesFromApi = (originalSentenceId) => {
+  // 只在开发环境且开启调试时输出日志
+  const shouldLog = process.env.NODE_ENV === 'development' && window.DEBUG_BREAKING_SENTENCES === true
+  
+  if (shouldLog) {
+    console.log('📋 [getBreakingSentencesFromApi] 从接口数据获取断句列表', {
+      originalSentenceId,
+      hasOriginalData: !!originalSentenceListData.value
+    })
+  }
+  
+  // 从原始接口数据中查找
+  const listData = originalSentenceListData.value
+  const sentenceList = listData?.list || listData?.data?.list
+  
+  if (!sentenceList || !Array.isArray(sentenceList)) {
+    if (shouldLog) {
+      console.warn('⚠️ [getBreakingSentencesFromApi] 没有原始数据，回退到本地数据')
+    }
+    // 如果没有原始数据，回退到本地数据
+    return getSubSentences(originalSentenceId).filter(sub => sub.parent_id !== 0)
+  }
+  
+  // 查找对应的拆句
+  const originalSentence = sentenceList.find(
+    os => os.originalSentenceId == originalSentenceId || String(os.originalSentenceId) === String(originalSentenceId)
+  )
+  
+  if (!originalSentence || !Array.isArray(originalSentence.breakingSentenceList)) {
+    if (shouldLog) {
+      console.warn('⚠️ [getBreakingSentencesFromApi] 未找到拆句或断句列表，回退到本地数据', {
+        originalSentenceId,
+        foundOriginalSentence: !!originalSentence
+      })
+    }
+    return getSubSentences(originalSentenceId).filter(sub => sub.parent_id !== 0)
+  }
+  
+  // 将接口的 breakingSentenceList 转换为前端格式
+  const breakingSentences = originalSentence.breakingSentenceList.map((breakingSentence) => {
+    // 从 sentences 中查找对应的本地数据（可能包含本地修改，如 content 的实时编辑）
+    const localSentence = sentences.value.find(
+      s => s.sentence_id == breakingSentence.breakingSentenceId || 
+           String(s.sentence_id) === String(breakingSentence.breakingSentenceId)
+    )
+    
+    // 使用 controller 的方法转换接口数据
+    return sentenceController.convertBreakingSentenceFromApi(
+      breakingSentence,
+      originalSentenceId,
+      localSentence
+    )
+  }).sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+  
+  // 关键修复：添加本地新插入的断句（ID 为 -1）
+  // 从 sentences.value 中查找所有 parent_id === originalSentenceId 且 ID 为 -1 的断句
+  console.log('🔍 [getBreakingSentencesFromApi] 过滤本地断句前', {
+    originalSentenceId,
+    sentencesValue: sentences.value
+      .filter(s => s.parent_id === originalSentenceId)
+      .map(s => ({
+        sentence_id: s.sentence_id,
+        parent_id: s.parent_id,
+        content: s.content,
+        display_order: s.display_order,
+        indexInArray: sentences.value.findIndex(item => item.sentence_id === s.sentence_id)
+      }))
+  })
+
+  const localBreakingSentences = sentences.value
+    .filter(s => {
+      // 必须是断句（parent_id !== 0）
+      if (!s.parent_id || s.parent_id === 0) return false
+      // parent_id 必须等于拆句ID
+      if (s.parent_id !== originalSentenceId) return false
+      // ID 必须为负数（新插入的断句，使用负数作为临时ID，如 -1, -2, -3...）
+      const isNewSentence = typeof s.sentence_id === 'number' && s.sentence_id < 0
+      // 检查是否已经在接口数据中（避免重复）
+      const existsInApi = originalSentence.breakingSentenceList.some(
+        bs => bs.breakingSentenceId == s.sentence_id || String(bs.breakingSentenceId) === String(s.sentence_id)
+      )
+      // 只包含本地新插入的断句（ID 为负数且不在接口数据中）
+      return isNewSentence && !existsInApi
+    })
+    .map(localSentence => ({
+      ...localSentence,
+      // 确保 parent_id 正确
+      parent_id: originalSentenceId,
+      // 确保 display_order 有值
+      display_order: localSentence.display_order ?? 0
+    }))
+
+  console.log('🔍 [getBreakingSentencesFromApi] 过滤本地断句后', {
+    localBreakingSentences: localBreakingSentences.map(s => ({
+      sentence_id: s.sentence_id,
+      content: s.content,
+      display_order: s.display_order
+    }))
+  })
+  
+  // 合并接口断句和本地新插入的断句
+  const allBreakingSentences = [...breakingSentences, ...localBreakingSentences]
+  
+  console.log('🔍 [getBreakingSentencesFromApi] 排序前', {
+    breakingSentences: breakingSentences.map(s => ({
+      sentence_id: s.sentence_id,
+      content: s.content,
+      display_order: s.display_order
+    })),
+    localBreakingSentences: localBreakingSentences.map(s => ({
+      sentence_id: s.sentence_id,
+      content: s.content,
+      display_order: s.display_order
+    })),
+    allBreakingSentences: allBreakingSentences.map(s => ({
+      sentence_id: s.sentence_id,
+      content: s.content,
+      display_order: s.display_order
+    }))
+  })
+  
+  const sortedBreakingSentences = allBreakingSentences.sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+  
+  console.log('🔍 [getBreakingSentencesFromApi] 排序后', {
+    sortedBreakingSentences: sortedBreakingSentences.map(s => ({
+      sentence_id: s.sentence_id,
+      content: s.content,
+      display_order: s.display_order
+    }))
+  })
+  
+  if (shouldLog) {
+    console.log('✅ [getBreakingSentencesFromApi] 返回断句列表', {
+      originalSentenceId,
+      count: sortedBreakingSentences.length,
+      localCount: localBreakingSentences.length
+    })
+  }
+  
+  return sortedBreakingSentences
+}
+
+// 获取拆句内容：将所有子句子拼接起来（响应式）
+const getCombinedSentenceContent = (sentence) => {
+  // 使用 computed 来确保响应式更新
+  // 但由于这是在模板中调用的函数，我们需要确保它能够追踪到 sentences.value 的变化
+  const children = sentences.value
+    .filter((item) => item.parent_id === sentence.sentence_id)
+    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+  
+  // 如果有子句子，将所有子句子的内容拼接起来
+  if (children.length > 0) {
+    // 访问每个子句子的 content，确保 Vue 能够追踪到变化
+    return children.map(sub => {
+      // 确保访问 content 属性，触发响应式追踪
+      const content = sub.content || ''
+      return content
+    }).join('')
+  }
+  
+  // 如果没有子句子，返回父句子的原始内容
+  return sentence.content || ''
+}
+
+// 从content中提取纯文本，移除所有标签（停顿、静音、多音字等）
+const extractPlainText = (content, sentenceId = null) => {
+  // 只打印第一句的日志
+  const isFirstSentence = sentenceId && rootSentences.value.length > 0 && rootSentences.value[0].sentence_id === sentenceId
+  if (isFirstSentence) {
+    console.log('extractPlainText [第一句]', sentenceId, '输入长度:', content?.length, '内容:', content)
+  }
+  if (!content || typeof content !== 'string') return ''
+  // 移除停顿标签: <pause:1.0> 或 <pause>
+  let plainText = content.replace(/<pause(?::[\d.]+)?>/g, '')
+  // 移除静音标签: <silence:1.0>
+  plainText = plainText.replace(/<silence:[\d.]+>/g, '')
+  // 移除可能的其他HTML标签（如果有）
+  plainText = plainText.replace(/<[^>]+>/g, '')
+  if (isFirstSentence) {
+    console.log('extractPlainText [第一句]', sentenceId, '输出长度:', plainText?.length, '内容:', plainText)
+  }
+  return plainText
+}
+
+// 为每个根句子创建响应式的拼接内容计算属性
+const sentenceCombinedContentMap = computed(() => {
+  const map = {}
+  rootSentences.value.forEach((sentence, index) => {
+    const isFirstSentence = index === 0
+    const children = sentences.value
+      .filter((item) => item.parent_id === sentence.sentence_id)
+      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+    
+    if (children.length > 0) {
+      // 提取纯文本，移除所有标签
+      const parts = children.map(sub => {
+        if (isFirstSentence) {
+          console.log('[第一句] 子句子内容 before extract:', sub.sentence_id, '长度:', sub.content?.length, '内容:', sub.content)
+        }
+        const plain = extractPlainText(sub.content || '', sentence.sentence_id)
+        if (isFirstSentence) {
+          console.log('[第一句] 子句子内容 after extract:', sub.sentence_id, '长度:', plain?.length, '内容:', plain)
+        }
+        return plain
+      })
+      map[sentence.sentence_id] = parts.join('')
+      if (isFirstSentence) {
+        console.log('[第一句] 合并后内容:', sentence.sentence_id, '长度:', map[sentence.sentence_id]?.length, '内容:', map[sentence.sentence_id])
+      }
+    } else {
+      // 提取纯文本，移除所有标签
+      if (isFirstSentence) {
+        console.log('[第一句] 根句子内容 before extract:', sentence.sentence_id, '长度:', sentence.content?.length, '内容:', sentence.content)
+      }
+      map[sentence.sentence_id] = extractPlainText(sentence.content || '', sentence.sentence_id)
+      if (isFirstSentence) {
+        console.log('[第一句] 根句子内容 after extract:', sentence.sentence_id, '长度:', map[sentence.sentence_id]?.length, '内容:', map[sentence.sentence_id])
+      }
+    }
+  })
+  return map
+})
+
+// 获取拆句内容（使用计算属性）
+const getCombinedSentenceContentReactive = (sentence) => {
+  // sentenceCombinedContentMap 已经处理过纯文本提取，直接返回即可
+  const content = sentenceCombinedContentMap.value[sentence.sentence_id]
+  if (content !== undefined) {
+    return content
+  }
+  // 如果没有在 map 中，说明可能是新数据，需要提取纯文本
+  return extractPlainText(sentence.content || '')
+}
+
+const ensurePolyphonicState = (sentenceId) => {
+  if (!sentenceId) return null
+  if (!polyphonicStateMap[sentenceId]) {
+    polyphonicStateMap[sentenceId] = {
+      selections: {},
+      markers: []
+    }
+  }
+  if (typeof polyphonicModeMap[sentenceId] === 'undefined') {
+    polyphonicModeMap[sentenceId] = false
+  }
+  return polyphonicStateMap[sentenceId]
+}
+
+const getPolyphonicMarkers = (sub) => {
+  if (!sub) return []
+  return polyphonicStateMap[sub.sentence_id]?.markers || []
+}
+
+const isPolyphonicModeActive = (sub) => {
+  if (!sub) return false
+  return !!polyphonicModeMap[sub.sentence_id]
+}
+
+const buildPolyphonicMarkers = (sub) => {
+  if (!sub) return []
+  const content = sub.content || ''
+  const sentenceId = sub.sentence_id
+  const state = ensurePolyphonicState(sentenceId)
+  if (!content) {
+    state.markers = []
+    return []
+  }
+
+  let results = []
+  try {
+    results = polyphonic(content, { type: 'array' })
+  } catch (error) {
+    console.warn('polyphonic parse failed:', error)
+    state.markers = []
+    return []
+  }
+
+  const markers = []
+  for (let i = 0; i < content.length; i += 1) {
+    const char = content[i]
+    const optionsRaw = results[i] || []
+    const normalizedOptions = (optionsRaw || [])
+      .map((item) => (item || '').trim())
+      .filter((item) => item && item !== char)
+    const uniqueOptions = [...new Set(normalizedOptions)]
+    if (uniqueOptions.length <= 1) continue
+
+    const markerId = `${sentenceId}-${i}`
+    const selected = state.selections?.[markerId] || null
+    markers.push({
+      id: markerId,
+      sentenceId,
+      offset: i,
+      length: 1,
+      char,
+      options: uniqueOptions,
+      selected
+    })
+  }
+
+  state.markers = markers
+  return markers
+}
+
+const refreshPolyphonicForSub = (sub) => {
+  if (!sub) return
+  ensurePolyphonicState(sub.sentence_id)
+  buildPolyphonicMarkers(sub)
+}
+
+const isClearingText = ref(false)
+
+const selectSubSentence = (sub) => {
+  if (!sub) return
+  editingSubSentenceId.value = sub.sentence_id
+  editingForm.sentenceId = sub.sentence_id
+  editingForm.content = sub.content
+  editingForm.voice = sub.voice || 'default'
+  editingForm.volume = clampVolume(sub.volume)
+  editingForm.speed = clampSpeed(sub.speed)
+  editingForm.pitch = sub.pitch || 50
+  refreshPolyphonicForSub(sub)
+}
+
+const setEditorRef = (id, instance) => {
+  if (instance) {
+    editorRefs[id] = instance
+  } else {
+    delete editorRefs[id]
+  }
+}
+
+const handleEditorSelectionChange = (sub, payload = {}) => {
+  pauseEligibilityMap[sub.sentence_id] = !!payload?.hasTextBefore
+  selectionStateMap[sub.sentence_id] = {
+    ...payload,
+    sentenceId: sub.sentence_id
+  }
+}
+
+const handleEditorContentChange = (sub) => {
+  if (!sub) return
+  refreshPolyphonicForSub(sub)
+}
+
+const handleEditorFocus = (sub) => {
+  if (!sub) return
+  if (editingSubSentenceId.value !== sub.sentence_id) {
+    selectSubSentence(sub)
+  }
+}
+
+const currentSelectionContext = computed(() => {
+  if (!editingSubSentenceId.value) return null
+  return selectionStateMap[editingSubSentenceId.value] || null
+})
+
+const localSpeedDialog = reactive({
+  visible: false,
+  sentenceId: '',
+  docFrom: 0,
+  docTo: 0,
+  rangeLength: 0,
+  value: 0
+})
+
+const handleRequestLocalSpeed = (context = {}) => {
+  if (!editingSubSentenceId.value) return
+  const range = context.selectionRange
+  if (!range || range.length <= 0) return
+  localSpeedDialog.visible = true
+  localSpeedDialog.sentenceId = editingSubSentenceId.value
+  localSpeedDialog.docFrom = range.docFrom
+  localSpeedDialog.docTo = range.docTo
+  localSpeedDialog.rangeLength = range.length
+  localSpeedDialog.value = clampSpeed(editingForm.speed)
+}
+
+const handleCancelLocalSpeed = () => {
+  localSpeedDialog.visible = false
+  localSpeedDialog.sentenceId = ''
+  localSpeedDialog.docFrom = 0
+  localSpeedDialog.docTo = 0
+  localSpeedDialog.rangeLength = 0
+}
+
+const handleConfirmLocalSpeed = () => {
+  if (!localSpeedDialog.visible || !localSpeedDialog.sentenceId) {
+    return
+  }
+  const editor = editorRefs[localSpeedDialog.sentenceId]
+  if (editor?.applyLocalSpeedRange) {
+    editor.applyLocalSpeedRange(
+      localSpeedDialog.docFrom,
+      localSpeedDialog.docTo,
+      localSpeedDialog.value
+    )
+  }
+  handleCancelLocalSpeed()
+}
+
+const handleSpeedSegmentsChange = ({ sub, segments }) => {
+  if (!sub) return
+  sub.speedSegments = Array.isArray(segments) ? [...segments] : []
+}
+
+const handleClearText = async (rootSentence) => {
+  if (!rootSentence) return
+  isClearingText.value = true
+
+  // 先清空原始拆句内容，防止后续同步又把旧文本写回
+  rootSentence.content = ''
+  const children = sentences.value
+    .filter((item) => item.parent_id === rootSentence.sentence_id)
+    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+
+  const [keeper, ...toDelete] = children
+
+  // 删除多余的子句子
+  for (const child of toDelete) {
+    try {
+        await deleteSentenceApi(child.sentence_id)
+    } catch (error) {
+      console.error('删除子句子失败:', error)
+    }
+    const index = sentences.value.findIndex(
+      (item) => item.sentence_id === child.sentence_id
+    )
+    if (index !== -1) {
+      sentences.value.splice(index, 1)
+    }
+  }
+
+  let target = keeper
+
+  if (target) {
+    target.content = ''
+    target.speedSegments = []
+    editingForm.content = ''
+    refreshPolyphonicForSub(target)
+  } else {
+    // 没有子句子时创建一个新的空输入框
+    const newSentence = insertSentenceAfterLocal(rootSentence.sentence_id, {
+      content: '',
+      parent_id: rootSentence.sentence_id
+    })
+    if (newSentence && newSentence.sentence_id) {
+      ensurePolyphonicState(newSentence.sentence_id)
+      newSentence.speedSegments = []
+      target = newSentence
+    }
+  }
+
+  if (target) {
+    editingForm.content = ''
+    editingSubSentenceId.value = target.sentence_id
+  }
+  isClearingText.value = false
+  if (target) {
+    selectSubSentence(target)
+  }
+}
+watch(
+  () => editingSubSentenceId.value,
+  () => {
+    if (isClearingText.value) return
+    const sub = currentSubSentence.value
+    if (sub) {
+      editingForm.sentenceId = sub.sentence_id
+      editingForm.content = sub.content
+      editingForm.voice = sub.voice || 'default'
+      editingForm.volume = clampVolume(sub.volume)
+      editingForm.speed = clampSpeed(sub.speed)
+      editingForm.pitch = sub.pitch || 50
+    }
+  }
+)
+
+watch(
+  () => currentSubSentence.value && currentSubSentence.value.content,
+  (val) => {
+    if (isClearingText.value) return
+    if (typeof val === 'string') {
+      editingForm.content = val
+    }
+  }
+)
+
+watch(
+  () => [
+    editingForm.voice,
+    editingForm.volume,
+    editingForm.speed,
+    editingForm.pitch
+  ],
+  () => {
+    const sub = currentSubSentence.value
+    if (sub) {
+      sub.voice = editingForm.voice
+      sub.volume = clampVolume(editingForm.volume)
+      sub.speed = clampSpeed(editingForm.speed)
+      sub.pitch = editingForm.pitch
+    }
+  }
+)
+
+watch(
+  () => editingForm.volume,
+  (val) => {
+    const clamped = clampVolume(val)
+    if (clamped !== val) {
+      editingForm.volume = clamped
+    }
+  }
+)
+
+watch(
+  () => editingForm.speed,
+  (val) => {
+    const clamped = clampSpeed(val)
+    if (clamped !== val) {
+      editingForm.speed = clamped
+    }
+  }
+)
+
+// 从全局注入获取音色列表
+const globalVoiceList = inject('globalVoiceList', ref([]))
+
+// 根据音色类型分组
+const voiceCategories = computed(() => {
+  const categories = new Set()
+  globalVoiceList.value.forEach(voice => {
+    if (voice.voiceType) {
+      categories.add(voice.voiceType)
+    }
+  })
+  // 如果没有音色数据，返回默认分类
+  if (categories.size === 0) {
+    return [
+      { label: '新闻', value: 'news' },
+      { label: '小说', value: 'novel' }
+    ]
+  }
+  // 将类型转换为分类格式
+  const categoryMap = {
+    'news': { label: '新闻', value: 'news' },
+    'novel': { label: '小说', value: 'novel' },
+    'children': { label: '儿童', value: 'children' },
+    'image': { label: '形象', value: 'image' }
+  }
+  return Array.from(categories).map(type => {
+    return categoryMap[type] || { label: type, value: type }
+  })
+})
+
+const activeVoiceCategory = ref('news')
+
+// 将 API 返回的音色数据转换为 voiceOptions 格式
+const voiceOptions = computed(() => {
+  if (!globalVoiceList.value || globalVoiceList.value.length === 0) {
+    // 如果没有音色数据，返回默认值
+    return [
+      { label: '唐瑶', value: 'default', desc: '真实3.0', tag: '新闻', avatar: '唐' },
+      { label: '果子', value: 'female1', desc: '亲子3.0VC', tag: '儿童', avatar: '果' },
+      { label: '杨笙', value: 'male1', desc: '形象3.0', tag: '形象', avatar: '杨' }
+    ]
+  }
+  
+  // 按 sortOrder 排序
+  const sortedVoices = [...globalVoiceList.value].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+  
+  return sortedVoices.map(voice => {
+    // 获取音色名称的第一个字符作为头像
+    const avatar = voice.voiceName ? voice.voiceName.charAt(0) : '音'
+    
+    // 根据 voiceType 确定标签
+    const tagMap = {
+      'news': '新闻',
+      'novel': '小说',
+      'children': '儿童',
+      'image': '形象'
+    }
+    const tag = tagMap[voice.voiceType] || voice.voiceType || '默认'
+    
+    // 生成描述（可以根据实际需求调整）
+    const desc = voice.isRecommended ? '推荐' : '标准'
+    
+    return {
+      label: voice.voiceName,
+      value: voice.voiceId,
+      desc: desc,
+      tag: tag,
+      avatar: avatar,
+      voiceType: voice.voiceType,
+      avatar_url: voice.avatar_url || '' // api2.md: 使用 avatar_url
+    }
+  })
+})
+
+const customOptions = [
+  {
+    label: '音量',
+    icon: 'Headset',
+    controlKey: 'volume',
+    min: 0,
+    max: 100,
+    step: 1
+  },
+  {
+    label: '语速',
+    icon: 'MagicStick',
+    controlKey: 'speed',
+    min: -10,
+    max: 10,
+    step: 1
+  },
+  { label: '断句标准', icon: 'Tickets', actionKey: 'split-standard' },
+  { label: '停顿', icon: 'Timer', actionKey: 'pause' },
+  { label: '多音字', icon: 'ChatLineSquare', actionKey: 'polyphonic' },
+  { label: '插入静音', icon: 'Bell', actionKey: 'silence' },
+  { label: '阅读规范', icon: 'CollectionTag', actionKey: 'reading-rules' }
+]
+
+// 滚动处理函数
+const handleScroll = async (event) => {
+  const target = event.target
+  if (!target) return
+  
+  // 计算是否滚动到底部（距离底部100px时触发）
+  const scrollTop = target.scrollTop
+  const scrollHeight = target.scrollHeight
+  const clientHeight = target.clientHeight
+  
+  // 距离底部100px时加载更多
+  if (scrollHeight - scrollTop - clientHeight < 100) {
+    if (hasMore.value && !loadingMore.value && !loading.value) {
+      const listData = await loadMoreSentences()
+      if (listData) {
+        // 合并新的原始数据
+        if (originalSentenceListData.value && listData.data) {
+          originalSentenceListData.value.data.list = [
+            ...(originalSentenceListData.value.data.list || []),
+            ...(listData.data.list || [])
+          ]
+        } else if (listData.data) {
+          originalSentenceListData.value = listData
+        }
+        
+        // 初始化新加载的拆句的合成状态
+        if (listData.data && listData.data.list) {
+          initializeOriginalSentenceStatus(listData)
+        }
+      }
+    }
+  }
+}
+
+// 检查任务合成状态
+const checkTaskSynthesisStatus = async () => {
+  if (!taskId.value) return
+  
+  try {
+    const taskDetail = await getTaskDetail(parseInt(taskId.value))
+    
+    // 响应拦截器返回的是 res.data，所以 taskDetail 就是 data 对象
+    // 如果 taskDetail 有 data 属性，说明是嵌套结构，否则 taskDetail 本身就是 data
+    const data = taskDetail.data !== undefined ? taskDetail.data : taskDetail
+    const status = data?.status
+    const mergeId = data?.mergeId
+    
+    // 更新任务状态（确保是数字类型）
+    taskStatus.value = status !== undefined ? Number(status) : null
+    taskMergeId.value = mergeId
+    
+    // status: 0-拆句完成，1-语音合成中，2-语音合成成功，3-语音合成失败，4-语音合并中，5-语音合并成功，6-语音合并失败
+    if (status === 1) {
+      // 如果状态是"语音合成中"（status === 1），启动轮询
+      ElMessage.info('检测到任务正在合成中，将显示合成进度。')
+      taskSynthesisProgress.value.visible = true
+      taskSynthesisProgress.value.status = 'processing'
+      taskSynthesisProgress.value.statusText = '合成中'
+      startPollingTaskSynthesis()
+    } else if (status === 4) {
+      // status = 4（语音合并中），直接跳转到音频合成页面，并传递 mergeId 参数
+      if (mergeId) {
+        router.push({
+          name: 'MergeAudioProgress',
+          query: {
+            taskId: taskId.value,
+            mergeId: mergeId
+          }
+        })
+      } else {
+        router.push({
+          name: 'MergeAudioProgress',
+          query: {
+            taskId: taskId.value
+          }
+        })
+      }
+    } else if (status === 5) {
+      // status = 5（语音合并成功），弹出提示框
+      try {
+        await ElMessageBox.confirm(
+          '当前任务已完成，是否查看音频合并结果？',
+          '提示',
+          {
+            confirmButtonText: '查看合成音频',
+            cancelButtonText: '取消',
+            type: 'success',
+            distinguishCancelAndClose: true
+          }
+        )
+        
+        // 用户点击了"查看合成音频"
+        if (mergeId) {
+          router.push({
+            name: 'MergeAudioProgress',
+            query: {
+              taskId: taskId.value,
+              mergeId: mergeId
+            }
+          })
+        } else {
+          router.push({
+            name: 'MergeAudioProgress',
+            query: {
+              taskId: taskId.value
+            }
+          })
+        }
+      } catch (error) {
+        // 用户点击了"取消"，停留在当前精修页面
+        if (error === 'cancel') {
+          // 什么都不做，停留在当前页面
+        }
+      }
+    }
+  } catch (error) {
+    console.error('获取任务详情失败:', error)
+  }
+}
+
+// 获取 taskId 的辅助函数，同时支持 taskId 和 task_id 两种参数名（兼容旧版本）
+const getTaskIdFromRoute = () => {
+  return route.query.taskId || route.query.task_id
+}
+
+onMounted(() => {
+  taskId.value = getTaskIdFromRoute()
+  if (taskId.value) {
+    refreshSentences()
+  } else {
+    ElMessage.error('缺少任务ID参数')
+  }
+})
+
+// 监听路由变化，当从其他页面返回时重新加载数据
+watch(
+  () => route.query.taskId || route.query.task_id,
+  (newTaskId) => {
+    if (newTaskId && newTaskId !== taskId.value) {
+      taskId.value = newTaskId
+      refreshSentences()
+    }
+  },
+  { immediate: false }
+)
+
+// 组件卸载时清理定时器和停止音频
+onBeforeUnmount(() => {
+  // 清除所有拆句轮询定时器
+  Object.values(originalSentenceStatus.value).forEach(statusInfo => {
+    if (statusInfo.timer) {
+      clearInterval(statusInfo.timer)
+    }
+  })
+  originalSentenceStatus.value = {}
+  
+  // 清除所有断句轮询定时器
+  Object.values(breakingSentenceStatus.value).forEach(statusInfo => {
+    if (statusInfo.timer) {
+      clearInterval(statusInfo.timer)
+    }
+  })
+  breakingSentenceStatus.value = {}
+  
+  // 停止所有音频播放
+  stopAllPlayingAudio()
+})
+
+// 根据列表数据初始化拆句合成状态
+const initializeOriginalSentenceStatus = (listData) => {
+  if (!listData || !Array.isArray(listData.list)) return
+  
+  listData.list.forEach((originalSentence) => {
+    const originalSentenceId = originalSentence.originalSentenceId
+    if (!originalSentenceId) return
+    
+    // 映射 synthesisStatus: 0-未合成，1-合成中，2-已合成，3-合成失败
+    const statusMap = {
+      0: 'pending',
+      1: 'processing',
+      2: 'completed',
+      3: 'failed'
+    }
+    const status = statusMap[originalSentence.synthesisStatus] || 'pending'
+    
+    // 初始化状态，如果已存在且正在轮询中，则保留定时器，只更新状态（如果列表状态更准确）
+    const existingStatus = originalSentenceStatus.value[originalSentenceId]
+    
+    if (!existingStatus) {
+      // 新建状态
+      originalSentenceStatus.value[originalSentenceId] = {
+        status,
+        audioUrlList: [],
+        timer: null
+      }
+    } else {
+      // 如果已有状态
+      // 如果正在轮询中（有定时器），且列表状态是"已合成"或"失败"，说明轮询可能已经完成，更新状态
+      if (existingStatus.timer) {
+        // 如果列表显示已完成或失败，但轮询还在进行，可能是数据不同步，以列表为准
+        if (status === 'completed' || status === 'failed') {
+          existingStatus.status = status
+          // 如果已完成，清除定时器（可能列表数据已更新）
+          if (status === 'completed' || status === 'failed') {
+            clearInterval(existingStatus.timer)
+            existingStatus.timer = null
+          }
+        }
+      } else {
+        // 没有定时器，直接更新状态
+        existingStatus.status = status
+      }
+    }
+    
+    // 如果已合成，尝试从断句列表中构建 audioUrlList
+    if (status === 'completed' && Array.isArray(originalSentence.breakingSentenceList)) {
+      const audioUrlList = originalSentence.breakingSentenceList
+        .filter(bs => bs.audioUrl) // 只包含有音频的断句
+        .map(bs => ({
+          sequence: bs.sequence || 0,
+          audioUrl: bs.audioUrl
+        }))
+        .sort((a, b) => a.sequence - b.sequence)
+      
+      if (audioUrlList.length > 0) {
+        originalSentenceStatus.value[originalSentenceId].audioUrlList = audioUrlList
+      }
+    }
+  })
+}
+
+// 根据列表数据初始化断句合成状态
+const initializeBreakingSentenceStatus = (listData) => {
+  console.log('🔵 [initializeBreakingSentenceStatus] 开始初始化断句状态', {
+    hasListData: !!listData,
+    isArray: Array.isArray(listData?.list),
+    listLength: listData?.list?.length || 0
+  })
+  
+  if (!listData || !Array.isArray(listData.list)) {
+    console.warn('⚠️ [initializeBreakingSentenceStatus] 数据无效，跳过初始化')
+    return
+  }
+  
+  let totalBreakingSentences = 0
+  let initializedCount = 0
+  
+  listData.list.forEach((originalSentence, origIndex) => {
+    if (!Array.isArray(originalSentence.breakingSentenceList)) return
+    
+    originalSentence.breakingSentenceList.forEach((breakingSentence, breakIndex) => {
+      totalBreakingSentences++
+      const breakingSentenceId = breakingSentence.breakingSentenceId
+      if (!breakingSentenceId) {
+        console.warn(`⚠️ [initializeBreakingSentenceStatus] 断句 ${breakIndex} 缺少 breakingSentenceId`)
+        return
+      }
+      
+      // 统一使用字符串 ID 作为键，避免类型不匹配问题
+      const id = String(breakingSentenceId)
+      
+      // 映射 synthesisStatus: 0-未合成，1-合成中，2-已合成，3-合成失败
+      const statusMap = {
+        0: 'pending',
+        1: 'processing',
+        2: 'completed',
+        3: 'failed'
+      }
+      const status = statusMap[breakingSentence.synthesisStatus] || 'pending'
+      const audioUrl = breakingSentence.audioUrl || ''
+      
+      // console.log(`📝 [initializeBreakingSentenceStatus] 处理断句`, {
+      //   originalSentenceIndex: origIndex,
+      //   breakingSentenceIndex: breakIndex,
+      //   breakingSentenceId: breakingSentenceId,
+      //   idType: typeof breakingSentenceId,
+      //   idString: id,
+      //   synthesisStatus: breakingSentence.synthesisStatus,
+      //   mappedStatus: status,
+      //   audioUrl: audioUrl,
+      //   hasAudioUrl: !!audioUrl
+      // })
+      
+      // 初始化状态，如果已存在且正在轮询中，则保留定时器，只更新状态（如果列表状态更准确）
+      const existingStatus = breakingSentenceStatus.value[id] || breakingSentenceStatus.value[breakingSentenceId]
+      
+      if (!existingStatus) {
+        // 新建状态，统一使用字符串 ID 作为键
+        breakingSentenceStatus.value[id] = {
+          status,
+          audioUrl,
+          timer: null
+        }
+        initializedCount++
+        // console.log(`✅ [initializeBreakingSentenceStatus] 新建状态`, {
+        //   id,
+        //   status,
+        //   audioUrl,
+        //   storedKeys: Object.keys(breakingSentenceStatus.value)
+        // })
+        
+        // 如果原 ID 是数字，也存储一份数字版本，确保兼容性
+        if (!isNaN(breakingSentenceId) && String(breakingSentenceId) !== id) {
+          breakingSentenceStatus.value[breakingSentenceId] = breakingSentenceStatus.value[id]
+          console.log(`📌 [initializeBreakingSentenceStatus] 同时存储数字版本`, {
+            numericId: breakingSentenceId,
+            stringId: id
+          })
+        }
+      } else {
+        // 如果已有状态，更新到字符串 ID 键
+        const statusObj = breakingSentenceStatus.value[id] || existingStatus
+        
+        // console.log(`🔄 [initializeBreakingSentenceStatus] 更新已有状态`, {
+        //   id,
+        //   oldStatus: statusObj.status,
+        //   newStatus: status,
+        //   oldAudioUrl: statusObj.audioUrl,
+        //   newAudioUrl: audioUrl,
+        //   hasTimer: !!statusObj.timer
+        // })
+        
+        // 如果正在轮询中（有定时器），且列表状态是"已合成"或"失败"，说明轮询可能已经完成，更新状态
+        if (statusObj.timer) {
+          // 如果列表显示已完成或失败，但轮询还在进行，可能是数据不同步，以列表为准
+          if (status === 'completed' || status === 'failed') {
+            statusObj.status = status
+            statusObj.audioUrl = audioUrl
+            // 如果已完成，清除定时器（可能列表数据已更新）
+            if (status === 'completed' || status === 'failed') {
+              clearInterval(statusObj.timer)
+              statusObj.timer = null
+            }
+          }
+        } else {
+          // 没有定时器，直接更新状态
+          statusObj.status = status
+          statusObj.audioUrl = audioUrl
+        }
+        
+        // 确保字符串 ID 键存在
+        breakingSentenceStatus.value[id] = statusObj
+        // 如果原 ID 是数字，也更新数字版本
+        if (!isNaN(breakingSentenceId) && String(breakingSentenceId) !== id) {
+          breakingSentenceStatus.value[breakingSentenceId] = statusObj
+        }
+      }
+    })
+  })
+  
+  console.log('🔵 [initializeBreakingSentenceStatus] 初始化完成', {
+    totalBreakingSentences,
+    initializedCount,
+    totalStatusKeys: Object.keys(breakingSentenceStatus.value).length,
+    allStatusKeys: Object.keys(breakingSentenceStatus.value)
+  })
+}
+
+const refreshSentences = async (preserveEditingState = false) => {
+  try {
+    // 如果要求保持编辑状态，先保存当前状态
+    let savedEditingSentenceId = null
+    let savedEditingSubSentenceId = null
+    if (preserveEditingState) {
+      savedEditingSentenceId = editingSentenceId.value
+      savedEditingSubSentenceId = editingSubSentenceId.value
+      // 临时清空编辑状态，避免刷新时的自动恢复逻辑
+      editingSentenceId.value = null
+      editingSubSentenceId.value = null
+    }
+    
+    // 刷新时重置分页，加载第一页，每页10条（api2.md: page 从 0 开始）
+    const listData = await loadSentences(taskId.value, 0, 10, false)
+    
+    // 保存原始数据
+    originalSentenceListData.value = listData
+    
+    // 创建/更新数据备份（每次刷新都更新，确保备份是最新的原始数据）
+    createBackup()
+    
+    // 根据列表数据初始化拆句合成状态
+    initializeOriginalSentenceStatus(listData)
+    // 根据列表数据初始化断句合成状态
+    initializeBreakingSentenceStatus(listData)
+    
+    sentences.value.forEach((item) => ensurePolyphonicState(item.sentence_id))
+    
+    // 检查任务状态（在刷新数据后）
+    await checkTaskSynthesisStatus()
+    
+    // 如果要求保持编辑状态，恢复之前的状态（但不自动加载详情，由调用方处理）
+    if (preserveEditingState && savedEditingSentenceId) {
+      // savedEditingSentenceId 来自 toggleEdit，一定是拆句，直接使用
+      editingSentenceId.value = savedEditingSentenceId
+      editingSubSentenceId.value = savedEditingSubSentenceId
+      return // 提前返回，让调用方处理编辑状态的恢复
+    }
+    
+    // 默认行为：尝试恢复编辑状态
+    if (editingSentenceId.value) {
+      const current = sentences.value.find(
+        (item) => item.sentence_id === editingSentenceId.value
+      )
+      if (current) {
+        // 验证 current 是否是拆句（parent_id 为 0 或 null）
+        if (current.parent_id && current.parent_id !== 0) {
+          // 如果 current 是断句，找到它的父拆句
+          console.warn('⚠️ [refreshSentences] editingSentenceId 是断句，查找父拆句', {
+            editingSentenceId: editingSentenceId.value,
+            currentParentId: current.parent_id
+          })
+          const rootSentence = findSentenceById(current.parent_id)
+          if (rootSentence) {
+            editingSentenceId.value = rootSentence.sentence_id
+            await loadSentenceDetail(rootSentence.sentence_id, rootSentence.content)
+            const sub =
+              findSentenceById(pendingSelectSubSentenceId.value) ||
+              findSentenceById(editingSubSentenceId.value) ||
+              current
+            selectSubSentence(sub)
+          } else {
+            closeEditing()
+          }
+        } else {
+          // current 是拆句，正常处理
+          await loadSentenceDetail(current.sentence_id, current.content)
+          const sub =
+            findSentenceById(pendingSelectSubSentenceId.value) ||
+            findSentenceById(editingSubSentenceId.value) ||
+            current
+          selectSubSentence(sub)
+        }
+        pendingSelectSubSentenceId.value = null
+      } else {
+        closeEditing()
+      }
+    } else if (pendingSelectSubSentenceId.value) {
+      const sub = findSentenceById(pendingSelectSubSentenceId.value)
+      if (sub) {
+        // 如果 sub 是断句，确保 editingSentenceId 是它的父拆句
+        if (sub.parent_id && sub.parent_id !== 0) {
+          const rootSentence = findSentenceById(sub.parent_id)
+          if (rootSentence) {
+            editingSentenceId.value = rootSentence.sentence_id
+          }
+        }
+        selectSubSentence(sub)
+      }
+      pendingSelectSubSentenceId.value = null
+    }
+  } catch (error) {
+    console.error('加载句子列表失败:', error)
+  }
+}
+
+// 创建数据备份
+const createBackup = () => {
+  // 深拷贝 sentences
+  backupSentences.value = JSON.parse(JSON.stringify(sentences.value))
+  // 深拷贝 originalSentenceListData
+  if (originalSentenceListData.value) {
+    backupOriginalSentenceListData.value = JSON.parse(JSON.stringify(originalSentenceListData.value))
+  }
+}
+
+// 从备份恢复数据
+const restoreFromBackup = () => {
+  if (!backupSentences.value) {
+    console.warn('没有备份数据可恢复')
+    return
+  }
+  
+  // 恢复 sentences
+  sentences.value = JSON.parse(JSON.stringify(backupSentences.value))
+  
+  // 恢复 originalSentenceListData
+  if (backupOriginalSentenceListData.value) {
+    originalSentenceListData.value = JSON.parse(JSON.stringify(backupOriginalSentenceListData.value))
+  }
+  
+  // 重新初始化合成状态
+  if (originalSentenceListData.value) {
+    initializeOriginalSentenceStatus(originalSentenceListData.value)
+  }
+  
+  // 清理编辑状态相关的数据
+  Object.keys(polyphonicStateMap).forEach(key => {
+    if (!sentences.value.find(s => s.sentence_id === key)) {
+      delete polyphonicStateMap[key]
+      delete polyphonicModeMap[key]
+      delete pauseEligibilityMap[key]
+      delete selectionStateMap[key]
+      delete editorRefs[key]
+    }
+  })
+  
+  ElMessage.success('已恢复到原始状态')
+}
+
+const toggleEdit = async (sentence) => {
+  if (editingSentenceId.value === sentence.sentence_id) {
+    // 收起编辑时，会检查是否有未保存的修改
+    await closeEditing()
+    return
+  }
+  
+  // 如果正在编辑其他拆句，先检查是否有未保存的修改
+  if (editingSentenceId.value && editingSentenceId.value !== sentence.sentence_id) {
+    if (hasUnsavedChanges()) {
+      try {
+        await ElMessageBox.confirm(
+          '当前有未保存的设置，是否保存？',
+          '提示',
+          {
+            confirmButtonText: '保存',
+            cancelButtonText: '取消',
+            type: 'warning',
+            distinguishCancelAndClose: true
+          }
+        )
+        
+        // 用户点击了"保存"
+        await handleSaveCurrent()
+        // 保存成功后继续打开新的编辑
+      } catch (error) {
+        // 用户点击了"取消"，不切换编辑
+        if (error === 'cancel') {
+          return
+        }
+      }
+    }
+  }
+
+  // 开始编辑时，如果还没有备份，创建备份
+  if (!backupSentences.value) {
+    createBackup()
+  }
+
+  editingSentenceId.value = sentence.sentence_id
+  
+  // 从接口数据中获取断句列表（使用接口的 breakingSentence 数据）
+  const breakingSentences = getBreakingSentencesFromApi(sentence.sentence_id)
+  
+  // 检查是否有子句子（编辑区域只显示子句子）
+  const children = breakingSentences
+  
+  // 如果没有子句子，默认进入"大符号模式"：创建一个子句子，内容是父句子的内容
+  if (children.length === 0) {
+    const newSentence = insertSentenceAfterLocal(sentence.sentence_id, {
+      content: sentence.content,
+      parent_id: sentence.sentence_id
+    })
+
+    if (newSentence && newSentence.sentence_id) {
+      ensurePolyphonicState(newSentence.sentence_id)
+      editingSubSentenceId.value = newSentence.sentence_id
+      await loadSentenceDetail(newSentence.sentence_id, newSentence.content)
+      selectSubSentence(newSentence)
+      return
+    }
+  }
+  
+  // 如果有子句子，选中第一个子句子
+  if (children.length > 0) {
+    const firstChild = children.sort((a, b) => (a.display_order || 0) - (b.display_order || 0))[0]
+    editingSubSentenceId.value = firstChild.sentence_id
+    await loadSentenceDetail(firstChild.sentence_id, firstChild.content)
+    selectSubSentence(firstChild)
+  } else {
+    // 如果没有子句子且创建失败，使用父句子（虽然不会显示在编辑区域）
+    editingSubSentenceId.value = sentence.sentence_id
+    await loadSentenceDetail(sentence.sentence_id, sentence.content)
+    selectSubSentence(sentence)
+  }
+}
+
+// 检查当前数据与备份数据是否一致
+const hasUnsavedChanges = () => {
+  if (!editingSentenceId.value || !backupSentences.value) {
+    return false
+  }
+  
+  // 获取当前拆句下的所有断句
+  const currentBreakingSentences = getSubSentences(editingSentenceId.value)
+    .filter(sub => sub.parent_id !== 0)
+  
+  // 从备份中获取对应的断句
+  const backupSentence = backupSentences.value.find(s => s.sentence_id === editingSentenceId.value)
+  if (!backupSentence) {
+    return false
+  }
+  
+  const backupBreakingSentences = backupSentences.value
+    .filter(sub => sub.parent_id === editingSentenceId.value && sub.parent_id !== 0)
+  
+  // 比较数量
+  if (currentBreakingSentences.length !== backupBreakingSentences.length) {
+    return true
+  }
+  
+  // 比较每个断句的数据
+  for (const current of currentBreakingSentences) {
+    const backup = backupBreakingSentences.find(b => b.sentence_id === current.sentence_id)
+    
+    if (!backup) {
+      return true // 新增了断句
+    }
+    
+    // 比较关键字段
+    if (current.content !== backup.content ||
+        current.voice !== backup.voice ||
+        current.volume !== backup.volume ||
+        current.speed !== backup.speed) {
+      return true
+    }
+    
+    // 比较 pauseMarkers
+    const currentPauseMarkers = JSON.stringify((current.pauseMarkers || []).sort((a, b) => a.location - b.location))
+    const backupPauseMarkers = JSON.stringify((backup.pauseMarkers || []).sort((a, b) => a.location - b.location))
+    if (currentPauseMarkers !== backupPauseMarkers) {
+      return true
+    }
+    
+    // 比较 polyphonicOverrides
+    const currentPolyphonic = JSON.stringify((current.polyphonicOverrides || []).sort((a, b) => a.begin - b.begin))
+    const backupPolyphonic = JSON.stringify((backup.polyphonicOverrides || []).sort((a, b) => a.begin - b.begin))
+    if (currentPolyphonic !== backupPolyphonic) {
+      return true
+    }
+    
+    // 比较 speedSegments
+    const currentSpeedSegments = JSON.stringify((current.speedSegments || []).sort((a, b) => a.begin - b.begin))
+    const backupSpeedSegments = JSON.stringify((backup.speedSegments || []).sort((a, b) => a.begin - b.begin))
+    if (currentSpeedSegments !== backupSpeedSegments) {
+      return true
+    }
+  }
+  
+  // 检查是否有断句被删除
+  for (const backup of backupBreakingSentences) {
+    const current = currentBreakingSentences.find(c => c.sentence_id === backup.sentence_id)
+    if (!current) {
+      return true // 删除了断句
+    }
+  }
+  
+  return false
+}
+
+const closeEditing = async () => {
+  // 检查是否有未保存的修改
+  if (hasUnsavedChanges()) {
+    try {
+      await ElMessageBox.confirm(
+        '当前有未保存的设置，是否保存？',
+        '提示',
+        {
+          confirmButtonText: '保存',
+          cancelButtonText: '取消',
+          type: 'warning',
+          distinguishCancelAndClose: true
+        }
+      )
+      
+      // 用户点击了"保存"
+      await handleSaveCurrent()
+      // 保存成功后会刷新数据，这里直接收起编辑区域
+      editingSentenceId.value = null
+      editingSubSentenceId.value = null
+      hidePolyphonicTooltip()
+    } catch (error) {
+      // 用户点击了"取消"或关闭，不做任何操作
+      if (error === 'cancel') {
+        return // 不收起编辑区域
+      }
+    }
+  } else {
+    editingSentenceId.value = null
+    editingSubSentenceId.value = null
+    hidePolyphonicTooltip()
+  }
+}
+
+const loadSentenceDetail = async (sentenceId, fallbackContent = '') => {
+  try {
+    // 从原始数据中查找断句信息
+    let detail = null
+    
+    // 兼容两种数据结构：{ list: [...] } 或 { data: { list: [...] } }
+    const listData = originalSentenceListData.value
+    const sentenceList = listData?.list || listData?.data?.list
+    
+    if (sentenceList && Array.isArray(sentenceList)) {
+      // 遍历所有拆句，查找对应的断句
+      for (const originalSentence of sentenceList) {
+        if (Array.isArray(originalSentence.breakingSentenceList)) {
+          const breakingSentence = originalSentence.breakingSentenceList.find(
+            bs => bs.breakingSentenceId == sentenceId || String(bs.breakingSentenceId) === String(sentenceId)
+          )
+          
+          if (breakingSentence) {
+            const setting = breakingSentence.setting || {}
+            
+            // 从 setting 中提取数据
+            detail = {
+              content: breakingSentence.content || setting.content || fallbackContent,
+              voice: setting.voiceId || 'default',
+              volume: convertVolumeFromApi(setting.volume), // 接口范围 90~240，转换为前端范围 0~100
+              speed: mapSpeedFromSetting(setting), // 从 setting 中映射语速
+              pitch: 50 // API 中没有 pitch 字段，使用默认值
+            }
+            break
+          }
+        }
+        
+        // 如果没找到断句，检查是否是拆句本身
+        if (originalSentence.originalSentenceId == sentenceId || String(originalSentence.originalSentenceId) === String(sentenceId)) {
+          detail = {
+            content: originalSentence.content || fallbackContent,
+            voice: 'default',
+            volume: 70,
+            speed: 0,
+            pitch: 50
+          }
+          break
+        }
+      }
+    }
+    
+    // 如果从原始数据中找不到，使用 fallback
+    if (!detail) {
+      detail = {
+        content: fallbackContent,
+        voice: 'default',
+        volume: 70,
+        speed: 0,
+        pitch: 50
+      }
+    }
+    
+    editingForm.sentenceId = sentenceId
+    editingForm.content = detail.content
+    editingForm.voice = detail.voice
+    editingForm.volume = clampVolume(detail.volume)
+    editingForm.speed = clampSpeed(detail.speed)
+    editingForm.pitch = detail.pitch
+  } catch (error) {
+    console.error('加载句子详情失败:', error)
+    editingForm.sentenceId = sentenceId
+    editingForm.content = fallbackContent
+    editingForm.voice = 'default'
+    editingForm.volume = 70
+    editingForm.speed = 0
+    editingForm.pitch = 50
+  }
+}
+
+// 初始化 sentenceController（在所有依赖函数定义后）
+sentenceController = new SentenceController({
+  sentences,
+  findSentenceById,
+  generateNewSentenceId,
+  originalSentenceListData,
+  insertAfter: insertSentenceAfterLocal,
+  // 保存相关的方法
+  getSubSentences,
+  setConfigApi: setConfig,
+  createBackup,
+  refreshSentences,
+  loadSentenceDetail,
+  selectSubSentence
+})
+
+// 从接口音量值转换为前端音量值
+// 接口范围：90~240，前端范围：0~100
+const convertVolumeFromApi = (apiVolume) => {
+  if (typeof apiVolume !== 'number' || Number.isNaN(apiVolume)) return 70
+  // 公式: volume_frontend = ((volume_api - 90) / 150) * 100
+  const clamped = Math.max(90, Math.min(240, apiVolume))
+  return Math.round(((clamped - 90) / 150) * 100)
+}
+
+// 从 setting 中映射语速
+// 如果 setting 中有 speed 字段（50~200），转换为前端范围（-10~10）
+// 如果没有，返回默认值 0
+const mapSpeedFromSetting = (setting) => {
+  if (!setting || typeof setting.speed !== 'number') return 0
+  // 100 对应 0，50 对应 -10，200 对应 10
+  return Math.round(((setting.speed - 100) / 100) * 10)
+}
+
+const selectVoice = (voice) => {
+  editingForm.voice = voice
+}
+
+const handleUpdateCategory = (value) => {
+  activeVoiceCategory.value = value
+}
+
+const handleSaveCurrent = async () => {
+  if (!editingSentenceId.value) {
+    ElMessage.warning('请先选择一个拆句进行编辑')
+    return
+  }
+  
+  // 验证 editingSentenceId 对应的句子是否存在
+  const rootSentence = findSentenceById(editingSentenceId.value)
+  if (!rootSentence) {
+    ElMessage.error('未找到要保存的拆句，请刷新页面重试')
+    return
+  }
+  
+  console.log('🔍 [handleSaveCurrent] 开始保存', {
+    editingSentenceId: editingSentenceId.value,
+    editingSentenceIdType: typeof editingSentenceId.value,
+    editingFormSentenceId: editingForm.sentenceId,
+    rootSentence: {
+      sentence_id: rootSentence.sentence_id,
+      parent_id: rootSentence.parent_id
+    }
+  })
+  
+  try {
+    // 保存当前的编辑状态，以便刷新后恢复
+    const savedEditingSentenceId = editingSentenceId.value
+    const savedEditingSubSentenceId = editingSubSentenceId.value
+    
+    // 调用 controller 的保存方法
+    await sentenceController.saveCurrent({
+      editingSentenceId: editingSentenceId.value,
+      editingForm,
+      editorRefs,
+      polyphonicStateMap,
+      taskId: taskId.value,
+      onSuccess: async () => {
+        ElMessage.success('保存成功')
+        
+        // 刷新数据（从服务器获取最新数据，确保数据一致性）
+        // 传入 preserveEditingState=true 表示保持编辑状态
+        await refreshSentences(true)
+        
+        // 恢复编辑状态，保持界面展开和选中状态不变
+        if (savedEditingSentenceId) {
+          // savedEditingSentenceId 来自 toggleEdit，一定是拆句，直接使用
+          editingSentenceId.value = savedEditingSentenceId
+          
+          // 如果之前有选中的断句，尝试恢复选中状态
+          if (savedEditingSubSentenceId) {
+            console.log('🔄 [handleSaveCurrent] 尝试恢复选中的断句', {
+              savedEditingSubSentenceId,
+              isLocalId: typeof savedEditingSubSentenceId === 'string' && savedEditingSubSentenceId.startsWith('local-')
+            })
+            
+            const subSentence = findSentenceById(savedEditingSubSentenceId)
+            if (subSentence) {
+              console.log('✅ [handleSaveCurrent] 找到断句，恢复选中状态', {
+                sentenceId: subSentence.sentence_id,
+                content: subSentence.content
+              })
+              editingSubSentenceId.value = savedEditingSubSentenceId
+              await loadSentenceDetail(savedEditingSubSentenceId, subSentence.content)
+              selectSubSentence(subSentence)
+            } else {
+              // 如果断句不存在了（可能是本地 ID 被替换了），尝试通过内容匹配找到新的断句
+              console.log('⚠️ [handleSaveCurrent] 未找到断句，尝试通过内容匹配', {
+                savedEditingSubSentenceId,
+                savedEditingSentenceId,
+                savedContent: editingForm.content
+              })
+              
+              // 如果是本地 ID，尝试通过内容匹配找到对应的新断句
+              if (typeof savedEditingSubSentenceId === 'string' && savedEditingSubSentenceId.startsWith('local-')) {
+                const savedContent = editingForm.content
+                const rootSentence = findSentenceById(savedEditingSentenceId)
+                if (rootSentence && savedContent) {
+                  // 在刷新后的数据中查找内容匹配的断句
+                  const allSubSentences = getSubSentences(savedEditingSentenceId).filter(sub => sub.parent_id !== 0)
+                  const matchedSubSentence = allSubSentences.find(sub => sub.content === savedContent)
+                  
+                  if (matchedSubSentence) {
+                    console.log('✅ [handleSaveCurrent] 通过内容匹配找到新断句', {
+                      oldId: savedEditingSubSentenceId,
+                      newId: matchedSubSentence.sentence_id,
+                      content: matchedSubSentence.content
+                    })
+                    editingSubSentenceId.value = matchedSubSentence.sentence_id
+                    await loadSentenceDetail(matchedSubSentence.sentence_id, matchedSubSentence.content)
+                    selectSubSentence(matchedSubSentence)
+                  } else {
+                    console.warn('⚠️ [handleSaveCurrent] 无法通过内容匹配找到新断句，选中拆句本身')
+                    // 如果找不到，选中拆句本身
+                    const current = findSentenceById(savedEditingSentenceId)
+                    if (current) {
+                      editingSubSentenceId.value = savedEditingSentenceId
+                      await loadSentenceDetail(savedEditingSentenceId, current.content)
+                      selectSubSentence(current)
+                    }
+                  }
+                } else {
+                  // 如果找不到，选中拆句本身
+                  const current = findSentenceById(savedEditingSentenceId)
+                  if (current) {
+                    editingSubSentenceId.value = savedEditingSentenceId
+                    await loadSentenceDetail(savedEditingSentenceId, current.content)
+                    selectSubSentence(current)
+                  }
+                }
+              } else {
+                // 如果断句不存在了，选中拆句本身
+                const current = findSentenceById(savedEditingSentenceId)
+                if (current) {
+                  editingSubSentenceId.value = savedEditingSentenceId
+                  await loadSentenceDetail(savedEditingSentenceId, current.content)
+                  selectSubSentence(current)
+                }
+              }
+            }
+          } else {
+            // 如果没有选中的断句，选中拆句本身
+            const current = findSentenceById(savedEditingSentenceId)
+            if (current) {
+              editingSubSentenceId.value = savedEditingSentenceId
+              await loadSentenceDetail(savedEditingSentenceId, current.content)
+              selectSubSentence(current)
+            }
+          }
+        }
+      }
+    })
+  } catch (error) {
+    console.error('保存失败:', error)
+    ElMessage.error('保存失败，请重试')
+  }
+}
+
+const removeLocalSentence = (sentenceId) => {
+  const index = sentences.value.findIndex((item) => item.sentence_id === sentenceId)
+  if (index === -1) return null
+  const [removed] = sentences.value.splice(index, 1)
+
+  if (!removed.parent_id || removed.parent_id === 0) {
+    for (let i = sentences.value.length - 1; i >= 0; i -= 1) {
+      if (sentences.value[i].parent_id === removed.sentence_id) {
+        sentences.value.splice(i, 1)
+      }
+    }
+  }
+
+  delete polyphonicStateMap[sentenceId]
+  delete polyphonicModeMap[sentenceId]
+  delete pauseEligibilityMap[sentenceId]
+  delete selectionStateMap[sentenceId]
+  delete editorRefs[sentenceId]
+  return removed
+}
+
+const handleDelete = async (sentenceId) => {
+  try {
+    await ElMessageBox.confirm('确定要删除这个句子吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    // 判断是拆句还是断句
+    const sentence = findSentenceById(sentenceId)
+    const isBreakingSentence = sentence && sentence.parent_id && sentence.parent_id !== 0
+    
+    if (isBreakingSentence) {
+      // 断句：只在前端本地删除，不调用接口
+      const removed = removeLocalSentence(sentenceId)
+      
+      if (removed && editingSubSentenceId.value === sentenceId) {
+        const siblings = sentences.value
+          .filter((item) => item.parent_id === removed.parent_id && item.parent_id !== 0)
+          .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+
+        if (siblings.length > 0) {
+          const next = siblings[0]
+          editingSubSentenceId.value = next.sentence_id
+          selectSubSentence(next)
+        } else {
+          editingSubSentenceId.value = null
+          editingForm.sentenceId = ''
+          editingForm.content = ''
+        }
+      }
+      
+      ElMessage.success('已删除（本地）')
+    } else {
+      // 拆句：调用接口删除
+      await deleteSentenceApi(sentenceId)
+      ElMessage.success('删除成功')
+
+      const removed = removeLocalSentence(sentenceId)
+
+      if (removed && editingSubSentenceId.value === sentenceId) {
+        const siblings = sentences.value
+          .filter((item) => item.parent_id === removed.parent_id && item.parent_id !== 0)
+          .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+
+        if (siblings.length > 0) {
+          const next = siblings[0]
+          editingSubSentenceId.value = next.sentence_id
+          selectSubSentence(next)
+        } else {
+          editingSubSentenceId.value = null
+          editingForm.sentenceId = ''
+          editingForm.content = ''
+        }
+      }
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除失败:', error)
+    }
+  }
+}
+
+/**
+ * 向下插入断句
+ * 
+ * 业务逻辑：
+ * 1. 只能从断句点击（拆句没有这个按钮）
+ * 2. 新断句的 parent_id 永远使用当前拆句的 ID（即点击的断句的 parent_id）
+ * 3. 新断句插入在点击的断句下方（按 display_order 排序后的下一个位置）
+ * 4. 插入后重新整理所有断句的 display_order（从 0 开始连续递增）
+ * 5. 新断句的 ID 使用统一的 ID 生成器（-1, -2, -3...）
+ * 
+ * @param {number|string} sentenceId - 点击的断句 ID
+ */
+const handleInsertAfter = async (sentenceId) => {
+  try {
+    // 步骤1：获取用户输入的文本
+    const { value } = await ElMessageBox.prompt('请输入要插入的文本', '向下插入', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputPlaceholder: '请输入文本'
+    })
+
+    // 步骤2：使用控制器处理向下插入的数据逻辑
+    const clickedSentence = findSentenceById(sentenceId)
+    const newSentence = sentenceController.insertAfter(sentenceId, value)
+
+    // 步骤3：处理新断句的状态
+    if (newSentence && newSentence.sentence_id) {
+      ensurePolyphonicState(newSentence.sentence_id)
+
+      // 如果当前正在编辑该拆句，自动选中新插入的断句
+      const rootId = clickedSentence.parent_id
+      if (editingSentenceId.value === rootId && newSentence.parent_id === rootId) {
+        selectSubSentence(newSentence)
+      }
+
+      ElMessage.success('插入成功')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('插入失败:', error)
+      ElMessage.error(error.message || '插入失败')
+    }
+  }
+}
+
+// 获取拆句的合成状态
+const getOriginalSentenceSynthesisStatus = (originalSentenceId) => {
+  const status = originalSentenceStatus.value[originalSentenceId]
+  if (!status) return 'pending'
+  return status.status || 'pending'
+}
+
+// 合成拆句（根句子）
+const handleResynthesizeOriginalSentence = async (originalSentenceId) => {
+  try {
+    // 调用合成拆句接口
+    await synthesizeOriginalSentence({ originalSentenceId: String(originalSentenceId) })
+    ElMessage.success('合成中，请稍候...')
+    
+    // 更新状态为合成中
+    if (!originalSentenceStatus.value[originalSentenceId]) {
+      originalSentenceStatus.value[originalSentenceId] = {
+        status: 'processing',
+        audioUrlList: [],
+        timer: null
+      }
+    } else {
+      originalSentenceStatus.value[originalSentenceId].status = 'processing'
+    }
+    
+    // 启动轮询，显示遮罩（类似合成全部音频）
+    startPollingOriginalSentenceStatus(originalSentenceId, true)
+  } catch (error) {
+    console.error('合成拆句失败:', error)
+    ElMessage.error('合成失败，请重试')
+    if (originalSentenceStatus.value[originalSentenceId]) {
+      originalSentenceStatus.value[originalSentenceId].status = 'failed'
+    }
+    // 如果遮罩已显示，关闭它
+    if (taskSynthesisProgress.value.visible) {
+      taskSynthesisProgress.value.visible = false
+    }
+  }
+}
+
+// 启动轮询拆句合成状态
+const startPollingOriginalSentenceStatus = (originalSentenceId, showProgressDialog = false) => {
+  // 初始化状态
+  if (!originalSentenceStatus.value[originalSentenceId]) {
+    originalSentenceStatus.value[originalSentenceId] = {
+      status: 'processing',
+      audioUrlList: [],
+      timer: null,
+      total: 0,
+      completed: 0,
+      pending: 0,
+      progress: 0
+    }
+  }
+  
+  // 如果需要显示遮罩，显示它
+  if (showProgressDialog) {
+    taskSynthesisProgress.value.visible = true
+    taskSynthesisProgress.value.status = 'processing'
+  }
+  
+  startPollingSynthesisStatus({
+    getStatusApi: () => getOriginalSentenceStatus(originalSentenceId),
+    progressState: originalSentenceStatus.value[originalSentenceId],
+    onCompleted: (data) => {
+      const statusInfo = originalSentenceStatus.value[originalSentenceId]
+      statusInfo.status = 'completed'
+      statusInfo.audioUrlList = (data.audioUrlList || []).sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+      
+      // 如果显示了遮罩，关闭它
+      if (showProgressDialog) {
+        setTimeout(() => {
+          taskSynthesisProgress.value.visible = false
+          ElMessage.success('合成完成')
+        }, 1000)
+      } else {
+        ElMessage.success('合成完成')
+      }
+    },
+    onFailed: (data) => {
+      const statusInfo = originalSentenceStatus.value[originalSentenceId]
+      statusInfo.status = 'failed'
+      
+      // 如果显示了遮罩，关闭它
+      if (showProgressDialog) {
+        setTimeout(() => {
+          taskSynthesisProgress.value.visible = false
+          ElMessage.error('合成失败')
+        }, 2000)
+      } else {
+        ElMessage.error('合成失败')
+      }
+    },
+    onProcessing: (data) => {
+      const statusInfo = originalSentenceStatus.value[originalSentenceId]
+      statusInfo.status = 'processing'
+      // 更新已完成的音频列表
+      if (data.audioUrlList && data.audioUrlList.length > 0) {
+        statusInfo.audioUrlList = data.audioUrlList.sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+      }
+      
+      // 更新遮罩进度（如果显示了遮罩）
+      if (showProgressDialog && data.total !== undefined) {
+        taskSynthesisProgress.value.total = data.total || 0
+        taskSynthesisProgress.value.completed = data.completed || 0
+        taskSynthesisProgress.value.pending = data.pending || 0
+        if (taskSynthesisProgress.value.total > 0) {
+          taskSynthesisProgress.value.progress = Math.round(
+            (taskSynthesisProgress.value.completed / taskSynthesisProgress.value.total) * 100
+          )
+        }
+      }
+    },
+    parseStatusData: (statusData) => {
+      // 拆句状态数据直接返回，不需要额外解析
+      return statusData || {}
+    }
+  })
+}
+
+// 播放拆句（按顺序播放多个音频）
+const handlePlayOriginalSentence = async (sentence) => {
+  const originalSentenceId = sentence.sentence_id
+  
+  // 获取该拆句的音频列表
+  const statusInfo = originalSentenceStatus.value[originalSentenceId]
+  if (!statusInfo || !statusInfo.audioUrlList || statusInfo.audioUrlList.length === 0) {
+    ElMessage.warning('暂无音频可播放')
+    return
+  }
+  
+  const audioUrlList = statusInfo.audioUrlList
+  
+  // 如果只有一个音频，使用全局播放器
+  if (audioUrlList.length === 1 && audioPlayer) {
+    audioPlayer.show(audioUrlList[0].audioUrl)
+    return
+  }
+  
+  // 多个音频：使用原来的播放方式（按顺序播放）
+  // 停止当前正在播放的音频
+  stopAllPlayingAudio()
+  
+  // 创建音频元素数组
+  const audioElements = audioUrlList.map((item, index) => {
+    const audio = new Audio(item.audioUrl)
+    audio.preload = 'auto'
+    return { audio, sequence: item.sequence || index }
+  })
+  
+  // 按 sequence 排序
+  audioElements.sort((a, b) => a.sequence - b.sequence)
+  
+  // 设置当前播放信息
+  currentPlayingAudio.value = {
+    sentenceId: originalSentenceId,
+    audioList: audioElements,
+    currentIndex: 0,
+    audioElements: audioElements.map(item => item.audio)
+  }
+  
+  // 播放第一个音频
+  playNextAudio(0)
+}
+
+// 播放下一个音频
+const playNextAudio = (index) => {
+  if (!currentPlayingAudio.value || index >= currentPlayingAudio.value.audioElements.length) {
+    // 播放完成
+    currentPlayingAudio.value = null
+    return
+  }
+  
+  const audio = currentPlayingAudio.value.audioElements[index]
+  currentPlayingAudio.value.currentIndex = index
+  
+  // 监听播放结束事件
+  const onEnded = () => {
+    audio.removeEventListener('ended', onEnded)
+    // 播放下一个
+    playNextAudio(index + 1)
+  }
+  
+  audio.addEventListener('ended', onEnded)
+  
+  // 播放当前音频
+  audio.play().catch(error => {
+    console.error('播放音频失败:', error)
+    ElMessage.error('播放失败')
+    currentPlayingAudio.value = null
+  })
+}
+
+// 停止所有正在播放的音频
+const stopAllPlayingAudio = () => {
+  if (currentPlayingAudio.value) {
+    currentPlayingAudio.value.audioElements.forEach(audio => {
+      audio.pause()
+      audio.currentTime = 0
+    })
+    currentPlayingAudio.value = null
+  }
+  
+  // 停止所有 audioRefs 中的音频
+  Object.values(audioRefs.value).forEach(audio => {
+    if (audio && !audio.paused) {
+      audio.pause()
+      audio.currentTime = 0
+    }
+  })
+}
+
+// 获取断句的合成状态（直接从接口数据中获取）
+const getBreakingSentenceSynthesisStatus = (breakingSentenceId) => {
+  // 新插入的断句（ID 为 -1），直接返回 pending 状态
+  if (breakingSentenceId === -1 || breakingSentenceId === '-1') {
+    return { status: 'pending', audioUrl: '' }
+  }
+  
+  // 从接口数据中查找对应的断句
+  const listData = originalSentenceListData.value
+  const sentenceList = listData?.list || listData?.data?.list
+  
+  if (!sentenceList || !Array.isArray(sentenceList)) {
+    return { status: 'pending', audioUrl: '' }
+  }
+  
+  // 遍历所有拆句，查找对应的断句
+  for (const originalSentence of sentenceList) {
+    if (!Array.isArray(originalSentence.breakingSentenceList)) continue
+    
+    const breakingSentence = originalSentence.breakingSentenceList.find(
+      bs => bs.breakingSentenceId == breakingSentenceId || 
+           String(bs.breakingSentenceId) === String(breakingSentenceId)
+    )
+    
+    if (breakingSentence) {
+      // 映射 synthesisStatus: 0-未合成，1-合成中，2-已合成，3-合成失败
+      const statusMap = {
+        0: 'pending',
+        1: 'processing',
+        2: 'completed',
+        3: 'failed'
+      }
+      const status = statusMap[breakingSentence.synthesisStatus] || 'pending'
+      const audioUrl = breakingSentence.audioUrl || ''
+      
+      return { status, audioUrl }
+    }
+  }
+  
+  // 如果找不到，返回默认状态
+  return { status: 'pending', audioUrl: '' }
+}
+
+// 合成断句（子句子）
+const handleResynthesizeBreakingSentence = async (breakingSentenceId) => {
+  try {
+    // 调用合成断句接口
+    await synthesizeBreakingSentence({ breakingSentenceId })
+    ElMessage.success('合成中，请稍候...')
+    
+    // 更新状态为合成中
+    if (!breakingSentenceStatus.value[breakingSentenceId]) {
+      breakingSentenceStatus.value[breakingSentenceId] = {
+        status: 'processing',
+        audioUrl: '',
+        timer: null
+      }
+    } else {
+      breakingSentenceStatus.value[breakingSentenceId].status = 'processing'
+    }
+    
+    // 启动轮询
+    startPollingBreakingSentenceStatus(breakingSentenceId)
+  } catch (error) {
+    console.error('合成断句失败:', error)
+    ElMessage.error('合成失败，请重试')
+    if (breakingSentenceStatus.value[breakingSentenceId]) {
+      breakingSentenceStatus.value[breakingSentenceId].status = 'failed'
+    }
+  }
+}
+
+// 启动轮询断句合成状态
+const startPollingBreakingSentenceStatus = (breakingSentenceId) => {
+  // 初始化状态
+  if (!breakingSentenceStatus.value[breakingSentenceId]) {
+    breakingSentenceStatus.value[breakingSentenceId] = {
+      status: 'processing',
+      audioUrl: '',
+      timer: null
+    }
+  }
+  
+  startPollingSynthesisStatus({
+    getStatusApi: () => getBreakingSentenceStatus(breakingSentenceId),
+    progressState: breakingSentenceStatus.value[breakingSentenceId],
+    onCompleted: (data) => {
+      const statusInfo = breakingSentenceStatus.value[breakingSentenceId]
+      statusInfo.status = 'completed'
+      statusInfo.audioUrl = data.audioUrl || ''
+      ElMessage.success('合成完成')
+    },
+    onFailed: (data) => {
+      const statusInfo = breakingSentenceStatus.value[breakingSentenceId]
+      statusInfo.status = 'failed'
+      ElMessage.error('合成失败')
+    },
+    onProcessing: (data) => {
+      const statusInfo = breakingSentenceStatus.value[breakingSentenceId]
+      statusInfo.status = 'processing'
+      // 如果有音频URL，更新它
+      if (data.audioUrl) {
+        statusInfo.audioUrl = data.audioUrl
+      }
+    },
+    parseStatusData: (statusData) => {
+      // 断句状态数据需要转换：synthesisStatus 转换为 status
+      // synthesisStatus: 0-未合成，1-合成中，2-已合成，3-合成失败
+      const synthesisStatus = statusData.synthesisStatus
+      let status = 'processing'
+      if (synthesisStatus === 2) {
+        status = 'completed'
+      } else if (synthesisStatus === 3) {
+        status = 'failed'
+      } else if (synthesisStatus === 0) {
+        status = 'pending'
+      }
+      
+      return {
+        ...statusData,
+        status
+      }
+    }
+  })
+}
+
+// 全部合成：合成当前拆句下的所有断句
+const handleSynthesizeAllBreakingSentences = async () => {
+  if (!editingSentenceId.value) {
+    ElMessage.warning('请先选择一个拆句进行编辑')
+    return
+  }
+  
+  try {
+    // 调用合成拆句接口（这会合成拆句下的所有断句）
+    await synthesizeOriginalSentence({ originalSentenceId: String(editingSentenceId.value) })
+    ElMessage.success('合成中，请稍候...')
+    
+    // 获取当前拆句下的所有断句
+    const breakingSentences = getSubSentences(editingSentenceId.value)
+      .filter(sub => sub.parent_id !== 0) // 只包含断句，不包含拆句本身
+    
+    if (breakingSentences.length === 0) {
+      ElMessage.warning('该拆句下没有断句')
+      return
+    }
+    
+    // 为每个断句启动轮询
+    breakingSentences.forEach(breakingSentence => {
+      const breakingSentenceId = breakingSentence.sentence_id
+      
+      // 初始化断句状态为合成中
+      if (!breakingSentenceStatus.value[breakingSentenceId]) {
+        breakingSentenceStatus.value[breakingSentenceId] = {
+          status: 'processing',
+          audioUrl: '',
+          timer: null
+        }
+      } else {
+        breakingSentenceStatus.value[breakingSentenceId].status = 'processing'
+      }
+      
+      // 启动轮询该断句的合成状态
+      startPollingBreakingSentenceStatus(breakingSentenceId)
+    })
+  } catch (error) {
+    console.error('全部合成失败:', error)
+    ElMessage.error('合成失败，请重试')
+    
+    // 将所有断句状态设置为失败
+    const breakingSentences = getSubSentences(editingSentenceId.value)
+      .filter(sub => sub.parent_id !== 0)
+    breakingSentences.forEach(breakingSentence => {
+      const breakingSentenceId = breakingSentence.sentence_id
+      if (breakingSentenceStatus.value[breakingSentenceId]) {
+        breakingSentenceStatus.value[breakingSentenceId].status = 'failed'
+      }
+    })
+  }
+}
+
+// 原有的 handleResynthesize 保留用于兼容（如果其他地方还在使用）
+const handleResynthesize = async (sentenceId) => {
+  // 判断是拆句还是断句
+  // 如果能在 sentences 中找到且 parent_id === 0，则是拆句
+  const sentence = sentences.value.find(s => s.sentence_id === sentenceId)
+  if (sentence && sentence.parent_id === 0) {
+    // 是拆句
+    await handleResynthesizeOriginalSentence(sentenceId)
+  } else {
+    // 是断句
+    await handleResynthesizeBreakingSentence(sentenceId)
+  }
+}
+
+const handlePlay = (sentence) => {
+  console.log('🎵 [handlePlay] 播放按钮被点击', {
+    sentence,
+    sentenceId: sentence.sentence_id,
+    parentId: sentence.parent_id,
+    hasAudioPlayer: !!audioPlayer,
+    sentenceKeys: Object.keys(sentence)
+  })
+  
+  // 判断是拆句还是断句
+  // 从 getBreakingSentencesFromApi 返回的断句都有 parent_id，且不等于 0
+  const isRootSentence = sentence.parent_id === 0 || !sentence.parent_id
+  
+  console.log('🎵 [handlePlay] 判断结果', {
+    isRootSentence,
+    parentId: sentence.parent_id,
+    parentIdType: typeof sentence.parent_id
+  })
+  
+  if (isRootSentence) {
+    // 拆句：按顺序播放多个音频
+    console.log('🎵 [handlePlay] 拆句播放')
+    handlePlayOriginalSentence(sentence)
+  } else {
+    // 断句：播放单个音频
+    const breakingSentenceId = sentence.sentence_id
+    const statusInfo = breakingSentenceStatus.value[breakingSentenceId]
+    
+    // 尝试多种方式获取 audioUrl
+    let audioUrl = statusInfo?.audioUrl || sentence.audio_url || sentence.audioUrl
+    
+    // 如果还是没有，尝试从原始数据中查找
+    if (!audioUrl) {
+      const listData = originalSentenceListData.value
+      const sentenceList = listData?.list || listData?.data?.list
+      if (sentenceList && Array.isArray(sentenceList)) {
+        for (const originalSentence of sentenceList) {
+          if (Array.isArray(originalSentence.breakingSentenceList)) {
+            const breakingSentence = originalSentence.breakingSentenceList.find(
+              bs => bs.breakingSentenceId == breakingSentenceId || 
+                    String(bs.breakingSentenceId) === String(breakingSentenceId)
+            )
+            if (breakingSentence) {
+              audioUrl = breakingSentence.audioUrl
+              break
+            }
+          }
+        }
+      }
+    }
+    
+    console.log('🎵 [handlePlay] 断句播放', {
+      breakingSentenceId,
+      statusInfo,
+      audioUrl,
+      sentenceAudioUrl: sentence.audio_url,
+      sentenceAudioUrl2: sentence.audioUrl,
+      hasAudioPlayer: !!audioPlayer,
+      allStatusKeys: Object.keys(breakingSentenceStatus.value)
+    })
+    
+    if (!audioUrl) {
+      console.warn('⚠️ [handlePlay] 没有音频URL', {
+        breakingSentenceId,
+        statusInfo,
+        sentence
+      })
+      ElMessage.warning('暂无音频可播放')
+      return
+    }
+    
+    // 使用全局音频播放器
+    if (audioPlayer) {
+      console.log('✅ [handlePlay] 使用全局播放器播放', { audioUrl })
+      audioPlayer.show(audioUrl)
+    } else {
+      console.warn('⚠️ [handlePlay] audioPlayer 未注入，使用回退方式')
+      // 回退到原来的播放方式
+      const audio = new Audio(audioUrl)
+      audio.preload = 'auto'
+      audio.play().catch(error => {
+        console.error('播放音频失败:', error)
+        ElMessage.error('播放失败')
+      })
+    }
+  }
+}
+
+/**
+ * 通用的合成状态轮询函数
+ * @param {Object} config - 轮询配置
+ * @param {Function} config.getStatusApi - 获取状态的API函数
+ * @param {Object|Ref} config.progressState - 进度状态对象（可以是 ref 或普通对象）
+ * @param {Function} config.onCompleted - 完成回调
+ * @param {Function} config.onFailed - 失败回调
+ * @param {Function} config.onProcessing - 处理中回调（可选）
+ * @param {Function} config.parseStatusData - 解析状态数据的函数（可选）
+ * @param {Function} config.getProgressState - 获取进度状态的函数（可选，用于从对象中获取状态）
+ */
+const startPollingSynthesisStatus = ({
+  getStatusApi,
+  progressState,
+  onCompleted,
+  onFailed,
+  onProcessing,
+  parseStatusData,
+  getProgressState
+}) => {
+  // 获取状态对象的辅助函数
+  const getState = () => {
+    if (getProgressState) {
+      return getProgressState()
+    }
+    // 如果是 ref，返回 .value；否则直接返回
+    return progressState.value !== undefined ? progressState.value : progressState
+  }
+  
+  // 设置状态对象的辅助函数
+  const setState = (updates) => {
+    const state = getState()
+    Object.assign(state, updates)
+  }
+  
+  // 清除之前的定时器
+  const currentState = getState()
+  if (currentState.timer) {
+    clearInterval(currentState.timer)
+  }
+  
+  const poll = async () => {
+    try {
+      const statusData = await getStatusApi()
+      
+      // 如果提供了自定义解析函数，使用它；否则直接使用返回的数据
+      const data = parseStatusData ? parseStatusData(statusData) : (statusData || {})
+      
+      const state = getState()
+      
+      // 更新进度信息（如果数据中有这些字段）
+      if (data.total !== undefined) {
+        state.total = data.total || 0
+      }
+      if (data.completed !== undefined) {
+        state.completed = data.completed || 0
+      }
+      if (data.pending !== undefined) {
+        state.pending = data.pending || 0
+      }
+      
+      // 计算进度百分比
+      if (state.total > 0) {
+        state.progress = Math.round(
+          (state.completed / state.total) * 100
+        )
+      } else if (data.progress !== undefined) {
+        state.progress = data.progress || 0
+      }
+      
+      // 判断状态
+      const status = data.status
+      const statusNum = Number(status)
+      
+      // 判断是否完成：status === 2（语音合成成功）或 progress >= 100 或 completed >= total
+      const isCompleted = status === 'completed' || 
+                         statusNum === 2 || 
+                         state.progress >= 100 ||
+                         (state.total > 0 && 
+                          state.completed >= state.total)
+      
+      // 判断是否失败：status === 3（语音合成失败）
+      const isFailed = status === 'failed' || statusNum === 3
+      
+      console.log('🔍 [轮询] 状态判断', {
+        status,
+        statusNum,
+        isCompleted,
+        isFailed,
+        progress: state.progress,
+        completed: state.completed,
+        total: state.total,
+        hasTimer: !!state.timer
+      })
+      
+      if (isCompleted) {
+        // 合成完成
+        setState({ status: 'completed', progress: 100 })
+        
+        // 清除定时器 - 需要重新获取 state，确保获取到最新的定时器引用
+        const currentState = getState()
+        if (currentState.timer) {
+          console.log('🔍 [轮询] 清除定时器（完成）', { timer: currentState.timer })
+          clearInterval(currentState.timer)
+          currentState.timer = null
+        }
+        
+        // 调用完成回调
+        if (onCompleted) {
+          onCompleted(data)
+        }
+      } else if (isFailed) {
+        // 合成失败
+        setState({ status: 'failed' })
+        
+        // 清除定时器 - 需要重新获取 state，确保获取到最新的定时器引用
+        const currentState = getState()
+        if (currentState.timer) {
+          console.log('🔍 [轮询] 清除定时器（失败）', { timer: currentState.timer })
+          clearInterval(currentState.timer)
+          currentState.timer = null
+        }
+        
+        // 调用失败回调
+        if (onFailed) {
+          onFailed(data)
+        }
+      } else {
+        // 继续合成中
+        setState({ status: 'processing' })
+        
+        // 调用处理中回调
+        if (onProcessing) {
+          onProcessing(data)
+        }
+      }
+    } catch (error) {
+      console.error('获取合成状态失败:', error)
+      // 出错时不清除定时器，继续轮询
+    }
+  }
+  
+  // 设置定时器，每500ms轮询一次
+  const timer = setInterval(() => {
+    // 在每次轮询前检查状态，如果已完成或失败，停止轮询
+    const currentState = getState()
+    if (currentState.status === 'completed' || currentState.status === 'failed') {
+      if (currentState.timer) {
+        console.log('🔍 [轮询] 检测到已完成/失败状态，清除定时器', {
+          status: currentState.status,
+          timer: currentState.timer
+        })
+        clearInterval(currentState.timer)
+        currentState.timer = null
+      }
+      return
+    }
+    poll()
+  }, 500)
+  
+  const state = getState()
+  state.timer = timer
+  
+  console.log('🔍 [轮询] 启动定时器', {
+    timer,
+    state: {
+      status: state.status,
+      progress: state.progress,
+      hasTimer: !!state.timer
+    }
+  })
+  
+  // 立即执行一次
+  poll()
+}
+
+// 启动任务合成进度轮询
+const startPollingTaskSynthesis = () => {
+  // 显示遮罩
+  taskSynthesisProgress.value.visible = true
+  taskSynthesisProgress.value.status = 'processing'
+  
+  startPollingSynthesisStatus({
+    getStatusApi: () => getTaskStatus(parseInt(taskId.value)),
+    progressState: taskSynthesisProgress,
+    onCompleted: async (data) => {
+      taskStatus.value = 2 // 更新任务状态为 2（语音合成成功）
+      // 延迟关闭遮罩并刷新数据
+      setTimeout(async () => {
+        taskSynthesisProgress.value.visible = false
+        await refreshSentences()
+        ElMessage.success('合成完成')
+      }, 1000)
+    },
+    onFailed: (data) => {
+      taskStatus.value = 3 // 更新任务状态为 3（语音合成失败）
+      // 延迟关闭遮罩
+      setTimeout(() => {
+        taskSynthesisProgress.value.visible = false
+        ElMessage.error('合成失败')
+      }, 2000)
+    }
+  })
+}
+
+// 合成全部音频
+const handleSynthesizeAll = async () => {
+  if (!taskId.value) {
+    ElMessage.warning('缺少任务ID')
+    return
+  }
+  
+  // 检查是否有未保存的设置
+  if (editingSentenceId.value && hasUnsavedChanges()) {
+    try {
+      await ElMessageBox.confirm(
+        '当前有未保存的设置，请先保存后再进行合成操作',
+        '提示',
+        {
+          confirmButtonText: '去保存',
+          cancelButtonText: '取消',
+          type: 'warning',
+          distinguishCancelAndClose: true
+        }
+      )
+      
+      // 用户点击了"去保存"，不进行合成操作
+      return
+    } catch (error) {
+      // 用户点击了"取消"或关闭，不进行合成操作
+      return
+    }
+  }
+  
+  try {
+    synthesizingAll.value = true
+    await synthesizeTask({ taskId: parseInt(taskId.value) })
+    
+    // 启动轮询
+    startPollingTaskSynthesis()
+  } catch (error) {
+    console.error('合成全部音频失败:', error)
+    ElMessage.error('合成失败，请重试')
+    synthesizingAll.value = false
+  } finally {
+    // 注意：synthesizingAll 在轮询完成后不需要重置，因为遮罩已经显示了
+  }
+}
+
+// 根据任务状态计算按钮可用性
+const canSynthesizeAll = computed(() => {
+  // status = 0（拆句完成）：可点击
+  // status = 1（语音合成中）：不可点击
+  // status = 2（语音合成成功）：不可点击
+  // status = 3（语音合成失败）：可点击
+  // status = 4（语音合并中）：不可点击（但会直接跳转）
+  // status = 5（语音合并成功）：不可点击
+  // status = 6（语音合并失败）：可点击
+  if (taskStatus.value === null) return true // 初始状态，默认可点击
+  return taskStatus.value === 0 || taskStatus.value === 3 || taskStatus.value === 6
+})
+
+const canMergeAudio = computed(() => {
+  // status = 0（拆句完成）：不可点击
+  // status = 1（语音合成中）：不可点击
+  // status = 2（语音合成成功）：可点击
+  // status = 3（语音合成失败）：不可点击
+  // status = 4（语音合并中）：不可点击（但会直接跳转）
+  // status = 5（语音合并成功）：不可点击
+  // status = 6（语音合并失败）：可点击
+  if (taskStatus.value === null) return false // 初始状态，默认不可点击
+  return taskStatus.value === 2 || taskStatus.value === 6
+})
+
+const handleMergeAudio = async () => {
+  if (!taskId.value) {
+    ElMessage.warning('缺少任务ID')
+    return
+  }
+  
+  try {
+    // 调用合并音频接口
+    // mergeAudioTask 是 useSentencesRepository 中的方法，它调用 mergeAudio API
+    // 响应拦截器返回的是 res.data，所以返回值直接就是 data 对象
+    const mergeResult = await mergeAudioTask(taskId.value)
+    
+    console.log('🔍 [handleMergeAudio] 合并音频接口返回', mergeResult)
+    
+    // 从接口返回的数据中获取 mergeId
+    // mergeResult 可能是直接的数据对象，也可能有 data 属性
+    const data = mergeResult?.data !== undefined ? mergeResult.data : mergeResult
+    const mergeId = data?.mergeId || data?.merge_id || taskMergeId.value
+    
+    console.log('🔍 [handleMergeAudio] 提取的 mergeId', {
+      mergeResult,
+      data,
+      mergeId,
+      taskMergeId: taskMergeId.value,
+      mergeIdFromData: data?.mergeId,
+      mergeIdFromDataSnake: data?.merge_id
+    })
+    
+    // 更新 taskMergeId
+    if (mergeId) {
+      taskMergeId.value = mergeId
+    }
+    
+    // 跳转到合并音频进度页面
+    const query = {
+      taskId: taskId.value || route.query.taskId
+    }
+    
+    // 如果有 mergeId，传递 mergeId 参数
+    if (mergeId) {
+      query.mergeId = String(mergeId) // 确保是字符串类型
+    }
+    
+    console.log('🔍 [handleMergeAudio] 跳转到合并音频进度页面', query)
+    router.push({
+      name: 'MergeAudioProgress',
+      query
+    })
+  } catch (error) {
+    console.error('合并音频失败:', error)
+    ElMessage.error('合并音频失败，请重试')
+  }
+}
+
+const setAudioRef = (sentenceId, el) => {
+  if (el) {
+    audioRefs.value[sentenceId] = el
+  }
+}
+
+const cancelTooltipHide = () => {
+  if (polyphonicTooltipTimer) {
+    clearTimeout(polyphonicTooltipTimer)
+    polyphonicTooltipTimer = null
+  }
+}
+
+const hidePolyphonicTooltip = () => {
+  cancelTooltipHide()
+  polyphonicTooltip.visible = false
+  polyphonicTooltip.markerId = ''
+  polyphonicTooltip.sentenceId = null
+  polyphonicTooltip.char = ''
+  polyphonicTooltip.options = []
+  polyphonicTooltip.selected = ''
+  isTooltipHovering.value = false
+}
+
+const scheduleTooltipHide = () => {
+  if (isTooltipHovering.value) return
+  cancelTooltipHide()
+  polyphonicTooltipTimer = setTimeout(() => {
+    if (!isTooltipHovering.value) {
+      hidePolyphonicTooltip()
+    }
+  }, 250)
+}
+
+const showPolyphonicTooltip = (marker, rect) => {
+  cancelTooltipHide()
+  isTooltipHovering.value = false
+  const centerX = rect.left + (rect.right - rect.left) / 2
+  const bottomY = rect.bottom + 8
+  polyphonicTooltip.visible = true
+  polyphonicTooltip.markerId = marker.id
+  polyphonicTooltip.sentenceId = marker.sentenceId
+  polyphonicTooltip.char = marker.char
+  polyphonicTooltip.options = marker.options || []
+  polyphonicTooltip.selected = marker.selected || ''
+  polyphonicTooltip.position = {
+    x: centerX,
+    y: bottomY
+  }
+}
+
+const handlePolyphonicHover = (sub, payload) => {
+  if (!sub) return
+  if (!payload) {
+    scheduleTooltipHide()
+    return
+  }
+  if (!payload.rect) {
+    scheduleTooltipHide()
+    return
+  }
+  const marker = getPolyphonicMarkers(sub).find(
+    (item) => item.id === payload.markerId
+  )
+  if (!marker) {
+    scheduleTooltipHide()
+    return
+  }
+  const modeActive = isPolyphonicModeActive(sub)
+  if (!modeActive && !marker.selected) {
+    hidePolyphonicTooltip()
+    return
+  }
+  showPolyphonicTooltip(marker, payload.rect)
+}
+
+const handleTooltipMouseEnter = () => {
+  isTooltipHovering.value = true
+  cancelTooltipHide()
+}
+
+const handleTooltipMouseLeave = () => {
+  isTooltipHovering.value = false
+  scheduleTooltipHide()
+}
+
+const handlePolyphonicOptionSelect = (option) => {
+  const { sentenceId, markerId } = polyphonicTooltip
+  if (!sentenceId || !markerId) return
+  const state = ensurePolyphonicState(sentenceId)
+  if (!state) return
+  if (option) {
+    state.selections[markerId] = option
+  } else {
+    delete state.selections[markerId]
+  }
+  const target = findSentenceById(sentenceId)
+  refreshPolyphonicForSub(target)
+  hidePolyphonicTooltip()
+}
+
+const togglePolyphonicMode = () => {
+  const sub = currentSubSentence.value
+  if (!sub) return
+  const current = !!polyphonicModeMap[sub.sentence_id]
+  polyphonicModeMap[sub.sentence_id] = !current
+  refreshPolyphonicForSub(sub)
+  if (!polyphonicModeMap[sub.sentence_id]) {
+    hidePolyphonicTooltip()
+  }
+}
+
+const insertPauseMarker = () => {
+  const currentId = editingSubSentenceId.value
+  if (!currentId) return
+  const editor = editorRefs[currentId]
+  if (editor?.insertPause) {
+    editor.insertPause()
+  }
+}
+
+const insertSilenceMarker = (duration) => {
+  const currentId = editingSubSentenceId.value
+  if (!currentId) return
+  const editor = editorRefs[currentId]
+  if (editor?.insertSilence) {
+    editor.insertSilence(duration)
+  }
+}
+
+const promptSilenceDuration = async () => {
+  try {
+    const { value } = await ElMessageBox.prompt('请输入静音时长（秒）', '插入静音', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputPlaceholder: '例如 3.1',
+      inputValue: '1.0'
+    })
+    const parsed = Number(value)
+    if (Number.isNaN(parsed) || parsed <= 0) {
+      ElMessage.error('请输入大于 0 的秒数')
+      return
+    }
+    const normalized = Math.min(60, Math.max(0.1, parsed))
+    const formatted =
+      normalized % 1 === 0 ? normalized.toString() : normalized.toFixed(1)
+    insertSilenceMarker(formatted)
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('插入静音失败:', error)
+    }
+  }
+}
+
+const handleSplitStandard = () => {
+  if (!editingSentenceId.value) {
+    ElMessage.warning('请先选择一个句子进行编辑')
+    return
+  }
+
+  const rootSentence = findSentenceById(editingSentenceId.value)
+  if (!rootSentence) {
+    ElMessage.error('未找到当前句子')
+    return
+  }
+
+  // 存储上下文
+  splitStandardContext.value = {
+    rootSentence,
+    originalText: rootSentence.content || ''
+  }
+
+  // 重置选择值
+  splitStandardType.value = 'punctuation'
+
+  // 显示对话框
+  splitStandardDialogVisible.value = true
+}
+
+const handleSplitStandardDialogClose = () => {
+  splitStandardDialogVisible.value = false
+  splitStandardContext.value = null
+  // 重置选择值
+  splitStandardType.value = 'punctuation'
+  splitStandardCharCount.value = 50
+}
+
+const handleSplitStandardConfirm = () => {
+  if (!splitStandardContext.value) {
+    splitStandardDialogVisible.value = false
+    return
+  }
+
+  const { rootSentence, originalText } = splitStandardContext.value
+  const selectedType = splitStandardType.value
+
+  if (selectedType === 'punctuation') {
+    // 大符号：清空所有输入文本，将原始拆句作为输入文本
+    handleSplitByPunctuation(rootSentence, originalText)
+    splitStandardDialogVisible.value = false
+    splitStandardContext.value = null
+  } else if (selectedType === 'charCount') {
+    // 字符数：使用对话框中输入的字符数
+    const charCount = parseInt(splitStandardCharCount.value, 10)
+    if (Number.isNaN(charCount) || charCount <= 0) {
+      ElMessage.error('请输入大于 0 的字符数')
+      return
+    }
+    handleSplitByCharCount(rootSentence, originalText, charCount)
+    splitStandardDialogVisible.value = false
+    splitStandardContext.value = null
+  } else {
+    ElMessage.warning('请选择断句方式')
+  }
+}
+
+
+const handleSplitByPunctuation = async (rootSentence, originalText) => {
+  try {
+    // 使用控制器处理按标点符号拆分的数据逻辑
+    const newSentence = sentenceController.splitByPunctuation(rootSentence, originalText)
+
+    if (newSentence && newSentence.sentence_id) {
+      ensurePolyphonicState(newSentence.sentence_id)
+      selectSubSentence(newSentence)
+      ElMessage.success('已按大符号重置：清空所有输入文本，并将父句复制为输入文本1')
+    } else {
+      ElMessage.error('创建子句子失败')
+    }
+  } catch (error) {
+    console.error('按标点符号拆分失败:', error)
+    ElMessage.error(error.message || '拆分失败')
+  }
+}
+
+const handleSplitByCharCount = async (rootSentence, originalText, charCount) => {
+  try {
+    // 使用控制器处理按字符数拆分的数据逻辑
+    const newSentences = sentenceController.splitByCharCount(rootSentence, originalText, charCount)
+
+    // 处理新断句的状态
+    newSentences.forEach(newSentence => {
+      if (newSentence && newSentence.sentence_id) {
+        ensurePolyphonicState(newSentence.sentence_id)
+      }
+    })
+
+    // 如果当前选中的是父句子，更新编辑表单为拆分后的第一段文本
+    if (newSentences.length > 0 && editingSubSentenceId.value === rootSentence.sentence_id) {
+      editingForm.content = newSentences[0].content
+    }
+
+    ElMessage.success(`已按 ${charCount} 个字符拆分为 ${newSentences.length} 句`)
+  } catch (error) {
+    console.error('按字符数拆分失败:', error)
+    ElMessage.error(error.message || '拆分失败')
+  }
+}
+
+const handleCustomAction = (actionKey) => {
+  if (actionKey === 'pause') {
+    if (!isPauseEnabled.value) return
+    insertPauseMarker()
+  } else if (actionKey === 'polyphonic') {
+    togglePolyphonicMode()
+  } else if (actionKey === 'silence') {
+    promptSilenceDuration()
+  } else if (actionKey === 'split-standard') {
+    handleSplitStandard()
+  } else if (actionKey === 'reading-rules') {
+    router.push('/reading-rules')
+  }
+}
+
+const formatDuration = (seconds) => {
+  if (!seconds) return ''
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+</script>
+
+<style scoped>
+.sentences-page {
+  padding: 20px 0 60px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 0 20px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.page-header h2 {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.sentences-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 20px;
+}
+
+.sentences-card :deep(.el-card__body) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px;
+}
+
+.empty-state {
+  padding: 40px;
+  text-align: center;
+}
+
+.sentence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.sentence-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sentence-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.sentence-list::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.sentence-list::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+.loading-more,
+.no-more {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 20px;
+  color: #999;
+  font-size: 14px;
+  margin-top: auto;
+  margin-bottom: 0px;
+}
+
+.loading-more .el-icon {
+  font-size: 16px;
+}
+
+.sentence-item {
+  padding: 0;
+}
+
+.sentence-layout {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px;
+}
+
+.sentence-main {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  padding: 16px;
+}
+
+.sentence-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.sentence-number {
+  font-weight: 600;
+  color: #1d1f23;
+  margin-right: 12px;
+}
+
+.sentence-duration {
+  font-size: 12px;
+  color: #999;
+}
+
+.sentence-status {
+  font-size: 12px;
+  color: #f56c6c;
+}
+
+.sentence-status.success {
+  color: #67c23a;
+}
+
+.sentence-content {
+  flex: 1;
+  padding: 14px 16px;
+  background: #f7f9fc;
+  border-radius: 6px;
+  line-height: 1.6;
+  color: #333;
+}
+
+.sentence-text-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.sentence-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.sentence-links {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #5a7efc;
+}
+
+.sentence-link {
+  cursor: pointer;
+  color: #5a7efc;
+}
+
+.sentence-link.danger {
+  color: #f56c6c;
+}
+
+.sentence-divider {
+  color: #c0c4cc;
+}
+
+.sentence-status-tag {
+  color: #f59a23;
+  font-weight: 600;
+}
+
+.sentence-quick-actions {
+  width: 80px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  color: #666;
+  font-size: 13px;
+}
+.editing-panel {
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  background: #fdfdfd;
+}
+
+.textarea-wrapper {
+  margin-top: 16px;
+}
+
+.textarea-input {
+  position: relative;
+}
+
+.textarea-input :deep(.el-textarea__inner) {
+  padding-right: 240px;
+}
+
+.textarea-floating-links {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #5a7efc;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.textarea-link {
+  cursor: pointer;
+  color: #5a7efc;
+}
+
+.textarea-link.danger {
+  color: #f56c6c;
+}
+
+.textarea-status-tag.pending {
+  color: #f59a23;
+  font-weight: 600;
+}
+
+.textarea-divider {
+  color: #c0c4cc;
+}
+
+.textarea-toolbar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: #666;
+}
+
+.toolbar-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.textarea-count {
+  color: #999;
+  font-size: 12px;
+}
+
+.textarea-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.link-group {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.textarea-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.merge-footer {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.local-speed-dialog__body {
+  padding: 8px 4px;
+}
+
+.local-speed-dialog__info {
+  margin-bottom: 10px;
+  color: #666;
+  font-size: 13px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.synthesis-progress-dialog :deep(.el-dialog__header) {
+  padding: 20px 20px 10px;
+}
+
+.synthesis-progress-dialog :deep(.el-dialog__body) {
+  padding: 20px;
+}
+
+.progress-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1d1f23;
+}
+
+.progress-content {
+  padding: 10px 0;
+}
+
+.progress-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.progress-text {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #666;
+}
+
+.progress-status {
+  text-align: center;
+  font-size: 14px;
+  color: #666;
+}
+
+.progress-status .success {
+  color: #67c23a;
+  font-weight: 600;
+}
+
+.progress-status .error {
+  color: #f56c6c;
+  font-weight: 600;
+}
+</style>
+

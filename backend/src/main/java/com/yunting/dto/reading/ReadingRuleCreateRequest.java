@@ -1,6 +1,9 @@
 package com.yunting.dto.reading;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 /**
  * 创建阅读规范请求DTO
@@ -14,14 +17,14 @@ public class ReadingRuleCreateRequest {
 
     /**
      * 规范类型：
-     * CHINESE_G2P：拼音
-     * PHONETIC_SYMBOL：音标
-     * CONTINUUM：连读
-     * ALIAS：别名
-     * SAY_AS：数字/英文的读法
+     * 1：数字英文
+     * 2：音标调整
+     * 3：专有词汇
      */
-    @NotBlank(message = "ruleType不能为空")
-    private String ruleType;
+    @NotNull(message = "ruleType不能为空")
+    @Min(value = 1, message = "ruleType必须为1、2或3")
+    @Max(value = 3, message = "ruleType必须为1、2或3")
+    private Integer ruleType;
 
     /**
      * 自定义读法，类型为SAY_AS时，只允许传下面的值。
@@ -43,11 +46,11 @@ public class ReadingRuleCreateRequest {
         this.pattern = pattern;
     }
 
-    public String getRuleType() {
+    public Integer getRuleType() {
         return ruleType;
     }
 
-    public void setRuleType(String ruleType) {
+    public void setRuleType(Integer ruleType) {
         this.ruleType = ruleType;
     }
 

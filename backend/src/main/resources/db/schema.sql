@@ -143,7 +143,7 @@ DROP TABLE IF EXISTS `reading_rules`;
 CREATE TABLE `reading_rules`  (
                                   `rule_id` bigint(0) NOT NULL AUTO_INCREMENT,
                                   `pattern` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-                                  `rule_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+                                  `rule_type` int(0) NOT NULL COMMENT '规范类型：1-数字英文，2-音标调整，3-专有词汇',
                                   `rule_value` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
                                   `created_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                   `updated_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP(0),

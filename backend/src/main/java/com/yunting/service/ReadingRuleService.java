@@ -19,7 +19,7 @@ public interface ReadingRuleService {
 
     String setGlobalSetting(ReadingRuleSetGlobalSettingRequest request);
 
-    ReadingRuleListPageResponseDTO getReadingRuleList(Long taskId, String ruleType, Integer page, Integer pageSize);
+    ReadingRuleListPageResponseDTO getReadingRuleList(Long taskId, Integer ruleType, Integer page, Integer pageSize);
 
     MatchingFieldListResponseDTO getMatchingFieldListFromText(String text);
 }

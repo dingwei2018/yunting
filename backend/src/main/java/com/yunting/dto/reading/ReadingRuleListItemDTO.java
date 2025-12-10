@@ -1,13 +1,14 @@
 package com.yunting.dto.reading;
 
-import java.time.LocalDateTime;
-
-public class ReadingRuleDTO {
+/**
+ * 阅读规范列表项DTO
+ */
+public class ReadingRuleListItemDTO {
     private Long ruleId;
     private String pattern;
     private Integer ruleType;
     private String ruleValue;
-    private LocalDateTime createdAt;
+    private Boolean isOpen;
 
     public Long getRuleId() {
         return ruleId;
@@ -41,13 +42,11 @@ public class ReadingRuleDTO {
         this.ruleValue = ruleValue;
     }
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
+    public Boolean getIsOpen() {
+        return isOpen;
     }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
+    public void setIsOpen(Boolean isOpen) {
+        this.isOpen = isOpen;
     }
 }
-
-

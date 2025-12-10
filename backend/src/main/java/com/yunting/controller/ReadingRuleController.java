@@ -65,7 +65,7 @@ public class ReadingRuleController {
     @GetMapping("/getList")
     public ApiResponse<ReadingRuleListPageResponseDTO> getReadingRuleList(
             @RequestParam(value = "task_id", required = false) Long taskId,
-            @RequestParam(value = "ruleType", required = false) String ruleType,
+            @RequestParam(value = "ruleType", required = false) Integer ruleType,
             @RequestParam("page") Integer page,
             @RequestParam("pageSize") Integer pageSize) {
         ReadingRuleListPageResponseDTO data = readingRuleService.getReadingRuleList(taskId, ruleType, page, pageSize);

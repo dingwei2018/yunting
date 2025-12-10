@@ -1194,7 +1194,7 @@ GET /api/readingRule/getList
 |名称|位置|类型|必选|说明|
 |---|---|---|---|---|
 |task_id|query|integer| 否 |none|
-|ruleType|query|string| 否 |none|
+|ruleType|query|integer| 否 |规范类型：1-数字英文，2-音标调整，3-专有词汇|
 |page|query|integer| 是 |none|
 |pageSize|query|integer| 是 |none|
 
@@ -2457,7 +2457,7 @@ GET /api/originalSentence/getOriginalSentenceList
 {
   "ruleId": 0,
   "pattern": "string",
-  "ruleType": "string",
+  "ruleType": 1,
   "ruleValue": "string",
   "isOpen": true
 }
@@ -2470,7 +2470,7 @@ GET /api/originalSentence/getOriginalSentenceList
 |---|---|---|---|---|---|
 |ruleId|integer|false|none||none|
 |pattern|string|false|none|原文本|none|
-|ruleType|string|false|none||none|
+|ruleType|integer|false|none|规范类型|1-数字英文，2-音标调整，3-专有词汇|
 |ruleValue|string|false|none||none|
 |isOpen|boolean|true|none|全局开关状态|0，关闭，1，打开|
 
@@ -2484,7 +2484,7 @@ GET /api/originalSentence/getOriginalSentenceList
 ```json
 {
   "pattern": "string",
-  "ruleType": "string",
+  "ruleType": 1,
   "ruleValue": "string"
 }
 
@@ -2495,7 +2495,7 @@ GET /api/originalSentence/getOriginalSentenceList
 |名称|类型|必选|约束|中文名|说明|
 |---|---|---|---|---|---|
 |pattern|string|true|none|原始词|none|
-|ruleType|string|true|none|规范类型|1.数字英文，2音标调整，3.专有词汇|
+|ruleType|integer|true|none|规范类型|1-数字英文，2-音标调整，3-专有词汇|
 |ruleValue|string|true|none|自定义读法|类型为SAY_AS时，只允许传下面的值。<br />number：数字<br />date：日期<br />figure：数值<br />phone：电话号码<br />english：英文单词<br />spell：逐个字母读英文|
 
 <h2 id="tocS_ReadingRuleListResponseDTO">ReadingRuleListResponseDTO</h2>
@@ -2511,7 +2511,7 @@ GET /api/originalSentence/getOriginalSentenceList
     {
       "ruleId": 0,
       "pattern": "string",
-      "ruleType": "string",
+      "ruleType": 1,
       "ruleValue": "string",
       "isOpen": true
     }
@@ -2679,7 +2679,7 @@ GET /api/originalSentence/getOriginalSentenceList
 {
   "ruleId": 0,
   "pattern": "string",
-  "ruleType": "string",
+  "ruleType": 1,
   "ruleValue": "string",
   "isOpen": true
 }
@@ -2691,7 +2691,7 @@ GET /api/originalSentence/getOriginalSentenceList
 |---|---|---|---|---|---|
 |ruleId|integer(int64)|false|none||none|
 |pattern|string|false|none|原文本|none|
-|ruleType|string|false|none||none|
+|ruleType|integer|false|none|规范类型|1-数字英文，2-音标调整，3-专有词汇|
 |ruleValue|string|false|none||none|
 |isOpen|boolean|true|none|全局开关状态|0关闭�?打开|
 
@@ -2708,7 +2708,7 @@ GET /api/originalSentence/getOriginalSentenceList
     {
       "ruleId": 0,
       "pattern": "string",
-      "ruleType": "string",
+      "ruleType": 1,
       "ruleValue": "string",
       "isOpen": true
     }
@@ -2779,7 +2779,7 @@ GET /api/originalSentence/getOriginalSentenceList
       {
         "ruleId": 0,
         "pattern": "string",
-        "ruleType": "string",
+        "ruleType": 1,
         "ruleValue": "string",
         "isOpen": true
       }

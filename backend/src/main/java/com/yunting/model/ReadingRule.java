@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 public class ReadingRule {
     private Long ruleId;
     private String pattern;
-    private String ruleType;
+    private Integer ruleType;
     private String ruleValue;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -26,11 +26,11 @@ public class ReadingRule {
         this.pattern = pattern;
     }
 
-    public String getRuleType() {
+    public Integer getRuleType() {
         return ruleType;
     }
 
-    public void setRuleType(String ruleType) {
+    public void setRuleType(Integer ruleType) {
         this.ruleType = ruleType;
     }
 

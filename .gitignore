@@ -4,4 +4,16 @@ dist
 *.log
 .env.local
 .env.*.local
-
+.class
+*/target/
+*/target/classes/
+*/target/test-classes/
+*/target/generated-sources/
+*/target/generated-test-sources/
+*/target/generated-test-classes/
+*/target/generated-test-classes/
+.idea/
+.vscode/
+.history/
+.gitignore
+.gitignore
