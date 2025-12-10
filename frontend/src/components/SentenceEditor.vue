@@ -65,20 +65,6 @@
       />
     </transition>
 
-    <transition name="fade">
-      <ReadingRuleTooltip
-        v-if="readingRuleTooltip.visible"
-        :visible="readingRuleTooltip.visible"
-        :position="readingRuleTooltip.position"
-        :pattern="readingRuleTooltip.pattern"
-        :applied="readingRuleTooltip.applied"
-        :rule-id="readingRuleTooltip.ruleId"
-        @mouseenter="handleReadingRuleTooltipMouseEnter"
-        @mouseleave="handleReadingRuleTooltipMouseLeave"
-        @select="handleReadingRuleSelect"
-      />
-    </transition>
-
     <SplitStandardDialog
       :visible="splitStandardDialogVisible"
       :type="splitStandardType"
@@ -121,7 +107,6 @@ import { ref, computed, watch } from 'vue'
 import SentenceTuningPanel from '@/components/SentenceTuningPanel.vue'
 import SubSentenceEditorList from '@/components/SubSentenceEditorList.vue'
 import PolyphonicTooltip from '@/components/PolyphonicTooltip.vue'
-import ReadingRuleTooltip from '@/components/ReadingRuleTooltip.vue'
 import SplitStandardDialog from '@/components/SplitStandardDialog.vue'
 import { useSentenceEditor } from '@/composables/useSentenceEditor'
 
@@ -206,10 +191,6 @@ const {
   polyphonicTooltip,
   handleTooltipMouseEnter,
   handleTooltipMouseLeave,
-  readingRuleTooltip,
-  handleReadingRuleTooltipMouseEnter,
-  handleReadingRuleTooltipMouseLeave,
-  handleReadingRuleSelect,
   currentSelectionContext
 } = useSentenceEditor(props, emit)
 

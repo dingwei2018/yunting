@@ -532,14 +532,14 @@ public class SynthesisServiceImpl implements SynthesisService {
             if (!CollectionUtils.isEmpty(config.getReadRule())) {
                 List<ReadingRuleApplication> readingRuleApplications = new ArrayList<>();
                 for (SynthesisSetConfigRequest.ReadRuleConfig readRuleConfig : config.getReadRule()) {
-                    // 只处理isOpen为true的规则
-                    if (readRuleConfig.getIsOpen() != null && readRuleConfig.getIsOpen() 
-                            && readRuleConfig.getRuleId() != null) {
+                    // 处理所有规则，只要ruleId不为空就记录
+                    if (readRuleConfig.getRuleId() != null) {
                         ReadingRuleApplication application = new ReadingRuleApplication();
                         application.setRuleId(readRuleConfig.getRuleId());
                         application.setFromId(breakingSentenceId);
                         application.setType(ReadingRuleApplicationType.Type.BREAKING_SENTENCE);
-                        application.setIsOpen(readRuleConfig.getIsOpen()); // 使用前端传入的isOpen值
+                        // 使用前端传入的isOpen值，如果为null则默认为false
+                        application.setIsOpen(readRuleConfig.getIsOpen() != null ? readRuleConfig.getIsOpen() : false);
                         readingRuleApplications.add(application);
                     }
                 }

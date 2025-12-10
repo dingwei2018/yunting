@@ -31,6 +31,9 @@ export function getTask(taskId) {
   })
 }
 
+// 获取任务详情（别名）
+export const getTaskDetail = getTask
+
 // 获取任务句子列表
 export function getTaskSentences(taskId) {
   if (useMock) {

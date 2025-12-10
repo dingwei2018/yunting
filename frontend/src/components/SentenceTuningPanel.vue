@@ -10,10 +10,15 @@
           @click="selectVoiceInternal(voice.value)"
         >
           <div class="voice-info">
-            <el-avatar class="voice-avatar">{{ voice.avatar }}</el-avatar>
+            <el-avatar 
+              class="voice-avatar"
+              :src="voice.avatar_url"
+            >
+              {{ voice.avatar }}
+            </el-avatar>
             <div>
               <div class="voice-name">{{ voice.label }}</div>
-              <div class="voice-meta">{{ voice.desc }} · {{ voice.tag }}</div>
+              <div class="voice-meta">{{ voice.desc }}</div>
             </div>
           </div>
         </div>
@@ -39,8 +44,8 @@
           </div>
         </div>
         <div class="custom-ops">
-          <span class="text-count">{{ editingForm.content.length }}/5000</span>
-          <el-button link type="primary">全部合成</el-button>
+          <span class="text-count">{{ (currentContent || editingForm.content || '').length }}/5000</span>
+          <el-button link type="primary" @click="$emit('synthesize-all')">全部合成</el-button>
           <el-button link type="primary" @click="$emit('clear-text')">
             清空文本
           </el-button>
@@ -75,11 +80,10 @@ import {
 import { computed, ref } from 'vue'
 
 const props = defineProps({
-  voiceCategories: { type: Array, default: () => [] },
   voiceOptions: { type: Array, default: () => [] },
-  activeVoiceCategory: { type: String, default: '' },
   customOptions: { type: Array, default: () => [] },
   editingForm: { type: Object, required: true },
+  currentContent: { type: String, default: '' },
   customDisabled: { type: Object, default: () => ({}) },
   activeActions: { type: Object, default: () => ({}) },
   selectionContext: {
@@ -89,11 +93,11 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'update:activeVoiceCategory',
   'select-voice',
   'custom-action',
   'clear-text',
-  'request-local-speed'
+  'request-local-speed',
+  'synthesize-all'
 ])
 
 const iconComponents = {
@@ -120,10 +124,6 @@ const isItemActive = (item) => {
     return !!props.activeActions[item.actionKey]
   }
   return false
-}
-
-const updateCategory = (value) => {
-  emit('update:activeVoiceCategory', value)
 }
 
 const selectVoiceInternal = (value) => {
@@ -159,26 +159,6 @@ const handleCustomClick = (item) => {
   margin-bottom: 16px;
 }
 
-.voice-category {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.voice-category-item {
-  padding: 6px 18px;
-  border-radius: 999px;
-  background: #f0f2f7;
-  color: #666;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.voice-category-item.active {
-  background: #e6f1ff;
-  color: #2f7bff;
-}
-
 .voice-tabs {
   display: flex;
   gap: 16px;
@@ -192,7 +172,7 @@ const handleCustomClick = (item) => {
 }
 
 .voice-tab {
-  width: 240px;
+  width: 140px;
   border: 1px solid #dcdfe6;
   border-radius: 10px;
   padding: 10px 12px;

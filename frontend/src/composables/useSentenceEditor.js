@@ -44,19 +44,6 @@ export function useSentenceEditor(props, emit) {
   
   // 阅读规则状态：记录每个子句的阅读规则匹配和应用状态
   const readingRulesStateMap = reactive({})
-  
-  // 阅读规则提示框状态
-  const readingRuleTooltip = reactive({
-    visible: false,
-    sentenceId: null,
-    ruleId: '',
-    pattern: '',
-    applied: false,
-    position: { x: 0, y: 0 }
-  })
-  
-  let readingRuleTooltipTimer = null
-  const isReadingRuleTooltipHovering = ref(false)
 
   // 生成新句子ID的计数器
   let newSentenceIdCounter = -1
@@ -433,48 +420,17 @@ export function useSentenceEditor(props, emit) {
       return
     }
 
-    // 获取当前断句的纯文本内容，用于位置转换
-    const currentSub = findBreakingSentenceById(subId)
-    if (!currentSub) {
-      editorInstance.clearReadingRuleMarkers()
-      return
-    }
-
-    // 获取编辑器内容用于计算文档位置
-    let editorContent = currentSub.content || ''
-    if (typeof editorInstance.getContent === 'function') {
-      const content = editorInstance.getContent()
-      if (content) {
-        editorContent = content
-      }
-    }
-
     // 转换标记格式为编辑器需要的格式
-    // 注意：这里需要将纯文本位置（offset）转换为文档位置（from/to）
-    // 由于编辑器内容可能包含标记（如 <pause:0.5>），需要计算实际位置
-    const plainText = extractPlainTextFromContent(editorContent)
-    
-    const markers = readingRuleState.markers.map(marker => {
-      const pattern = marker.pattern || ''
-      const patternIndex = plainText.indexOf(pattern, marker.offset)
-      
-      if (patternIndex === -1) {
-        return null
-      }
+    const markers = readingRuleState.markers.map(marker => ({
+      ruleId: marker.ruleId,
+      pattern: marker.pattern,
+      from: marker.offset, // 需要转换为文档位置
+      to: marker.offset + marker.length, // 需要转换为文档位置
+      applied: readingRuleState.appliedRules.has(marker.ruleId || marker.pattern)
+    }))
 
-      // 使用 resolveDocRange 将纯文本位置转换为文档位置
-      // 这里需要传入编辑器的 resolveDocRange 方法，但暂时使用简化方案
-      // 实际位置转换会在编辑器的 updateReadingRuleMarkers 中处理
-      return {
-        ruleId: marker.ruleId,
-        pattern: marker.pattern,
-        offset: patternIndex,
-        length: marker.length,
-        applied: readingRuleState.appliedRules.has(marker.ruleId || marker.pattern)
-      }
-    }).filter(Boolean)
-
-    // 将标记传递给编辑器，编辑器会负责位置转换
+    // TODO: 需要将纯文本位置转换为文档位置（考虑停顿、静音等标记）
+    // 暂时使用纯文本位置
     editorInstance.setReadingRuleMarkers(markers)
   }
 
@@ -532,94 +488,10 @@ export function useSentenceEditor(props, emit) {
     updateReadingRuleMarkers(subId)
   }
 
-  // 取消阅读规则提示框隐藏
-  const cancelReadingRuleTooltipHide = () => {
-    if (readingRuleTooltipTimer) {
-      clearTimeout(readingRuleTooltipTimer)
-      readingRuleTooltipTimer = null
-    }
-  }
-
-  // 隐藏阅读规则提示框
-  const hideReadingRuleTooltip = () => {
-    cancelReadingRuleTooltipHide()
-    readingRuleTooltip.visible = false
-    readingRuleTooltip.ruleId = ''
-    readingRuleTooltip.sentenceId = null
-    readingRuleTooltip.pattern = ''
-    readingRuleTooltip.applied = false
-    isReadingRuleTooltipHovering.value = false
-  }
-
-  // 安排提示框隐藏
-  const scheduleReadingRuleTooltipHide = () => {
-    if (isReadingRuleTooltipHovering.value) return
-    cancelReadingRuleTooltipHide()
-    readingRuleTooltipTimer = setTimeout(() => {
-      if (!isReadingRuleTooltipHovering.value) {
-        hideReadingRuleTooltip()
-      }
-    }, 250)
-  }
-
-  // 显示阅读规则提示框
-  const showReadingRuleTooltip = (sub, payload) => {
-    if (!sub || !payload) {
-      scheduleReadingRuleTooltipHide()
-      return
-    }
-    
-    cancelReadingRuleTooltipHide()
-    isReadingRuleTooltipHovering.value = false
-    
-    const position = payload.position || { x: 0, y: 0 }
-    readingRuleTooltip.visible = true
-    readingRuleTooltip.sentenceId = sub.sentence_id
-    readingRuleTooltip.ruleId = payload.ruleId || ''
-    readingRuleTooltip.pattern = payload.pattern || ''
-    readingRuleTooltip.applied = payload.applied !== false
-    readingRuleTooltip.position = {
-      x: position.left || position.x || 0,
-      y: position.top || position.y || 0
-    }
-  }
-
   // 处理阅读规则悬停事件
   const handleReadingRuleHover = (sub, payload) => {
-    if (!payload) {
-      scheduleReadingRuleTooltipHide()
-      return
-    }
-    
-    showReadingRuleTooltip(sub, payload)
-  }
-
-  // 处理阅读规则提示框鼠标进入
-  const handleReadingRuleTooltipMouseEnter = () => {
-    isReadingRuleTooltipHovering.value = true
-    cancelReadingRuleTooltipHide()
-  }
-
-  // 处理阅读规则提示框鼠标离开
-  const handleReadingRuleTooltipMouseLeave = () => {
-    isReadingRuleTooltipHovering.value = false
-    scheduleReadingRuleTooltipHide()
-  }
-
-  // 处理阅读规则选择
-  const handleReadingRuleSelect = (applied) => {
-    if (!readingRuleTooltip.sentenceId || !readingRuleTooltip.ruleId) {
-      return
-    }
-    
-    toggleReadingRule(
-      readingRuleTooltip.sentenceId,
-      readingRuleTooltip.ruleId,
-      readingRuleTooltip.pattern,
-      applied
-    )
-    
-    hideReadingRuleTooltip()
+    // 传递到父组件，用于显示应用/不应用选项
+    emit('reading-rule-hover', { sub, payload })
   }
 
   // 标志：是否正在执行拆分操作（防止循环更新）
@@ -896,7 +768,6 @@ export function useSentenceEditor(props, emit) {
     splitStandardType: split.splitStandardType,
     splitStandardCharCount: split.splitStandardCharCount,
     polyphonicTooltip: polyphonic.polyphonicTooltip,
-    readingRuleTooltip,
     currentSelectionContext,
     currentContent,
     isSplitting,
@@ -939,10 +810,7 @@ export function useSentenceEditor(props, emit) {
     handleTooltipMouseLeave: polyphonic.handleTooltipMouseLeave,
     getReadingRuleMarkers,
     toggleReadingRule,
-    handleReadingRuleHover,
-    handleReadingRuleTooltipMouseEnter,
-    handleReadingRuleTooltipMouseLeave,
-    handleReadingRuleSelect
+    handleReadingRuleHover
   }
 }
 

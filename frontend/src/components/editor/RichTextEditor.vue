@@ -21,6 +21,7 @@ import PauseExtension, { PauseNodeName, DEFAULT_PAUSE_DURATION } from './extensi
 import SilenceExtension, { SilenceNodeName } from './extensions/silence'
 import PolyphonicMarkersExtension from './extensions/polyphonicMarkers'
 import SpeedSpanExtension, { SpeedSpanNodeName } from './extensions/speedSpan'
+import ReadingRulesExtension from './extensions/readingRules'
 
 const PAUSE_TOKEN_REGEX = /<pause(?::([\d.]+))?>/g
 const SILENCE_PLACEHOLDER_REGEX = /<silence:([\d.]+)>/g
@@ -50,6 +51,10 @@ const props = defineProps({
   speedSegments: {
     type: Array,
     default: () => []
+  },
+  readingRules: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -66,12 +71,15 @@ const emit = defineEmits([
   'contentChange',
   'polyphonicHover',
   'focus',
-  'speedSegmentsChange'
+  'speedSegmentsChange',
+  'readingRuleHover',
+  'readingRuleToggle'
 ])
 
 const markerMap = ref(new Map())
 const lastAppliedSpeedSegments = ref('[]')
 let isSyncingSpeedSegments = false
+let isInternalUpdate = false // 标志：是否正在内部更新（避免循环）
 
 const mapLeafNodeToText = (node) => {
   if (!node) return ''
@@ -88,13 +96,25 @@ const mapLeafNodeToText = (node) => {
 
 const getPlainTextBetween = (from, to) => {
   if (!editor?.value) return ''
-  return editor.value.state.doc.textBetween(
+  
+  const result = editor.value.state.doc.textBetween(
     from,
     to,
     '\n',
     '\n',
     (node) => mapLeafNodeToText(node)
   )
+  
+  return result
+}
+
+/**
+ * 获取去除换行符后的纯文本（用于局部变速标记的位置计算）
+ * 因为局部变速标记内部的 <p> 标签会产生换行符，但用户选中的文本是连续的
+ */
+const getPlainTextWithoutNewlinesBetween = (from, to) => {
+  const text = getPlainTextBetween(from, to)
+  return text.replace(/\n/g, '')
 }
 
 const serialize = (value = '') => {
@@ -130,18 +150,8 @@ const serialize = (value = '') => {
 const deserialize = (html) => {
   if (!html) return ''
   
-  // 添加日志（仅用于调试第一句）
-  const isFirstSentence = html.includes('11月17日') || html.includes('中央')
-  if (isFirstSentence) {
-    console.log('[deserialize] 输入 HTML 长度:', html.length, '内容:', html)
-  }
-  
   const tmp = document.createElement('div')
   tmp.innerHTML = html
-  
-  if (isFirstSentence) {
-    console.log('[deserialize] 原始 HTML:', tmp.innerHTML)
-  }
   
   // 先移除所有 <p> 标签，但保留其内容
   // 因为原始内容不应该有 <p> 标签，这些是 TipTap 自动添加的
@@ -159,10 +169,6 @@ const deserialize = (html) => {
     parent.insertBefore(fragment, p)
     parent.removeChild(p)
   })
-  
-  if (isFirstSentence) {
-    console.log('[deserialize] 移除 <p> 标签后的 HTML:', tmp.innerHTML)
-  }
   
   // 再移除语速标签，但保留其内容
   // 现在 HTML 结构已经简化，不需要处理嵌套的 <p> 标签
@@ -185,18 +191,17 @@ const deserialize = (html) => {
   // 递归移除所有语速标签
   removeSpeedSpans(tmp)
   
-  if (isFirstSentence) {
-    console.log('[deserialize] 移除语速标签后的 HTML:', tmp.innerHTML)
-  }
-  
   // 处理停顿和静音标记，将它们转换为文本标记
-  tmp.querySelectorAll('[data-pause]').forEach((node) => {
+  const pauseNodes = tmp.querySelectorAll('[data-pause]')
+  const silenceNodes = tmp.querySelectorAll('[data-silence]')
+  
+  pauseNodes.forEach((node) => {
     const duration = node.getAttribute('data-pause') || DEFAULT_PAUSE_DURATION
     const marker = document.createTextNode(`<pause:${duration}>`)
     node.parentNode?.replaceChild(marker, node)
   })
   
-  tmp.querySelectorAll('[data-silence]').forEach((node) => {
+  silenceNodes.forEach((node) => {
     const duration = node.getAttribute('data-silence') || '0'
     const marker = document.createTextNode(`<silence:${duration}>`)
     node.parentNode?.replaceChild(marker, node)
@@ -218,9 +223,6 @@ const deserialize = (html) => {
   // 但保留段落之间的换行（通过 <p> 标签分隔的内容）
   const result = textContent.trim()
   
-  if (isFirstSentence) {
-    console.log('[deserialize] 最终结果:', '长度:', result.length, '内容:', result)
-  }
   return result
 }
 
@@ -232,13 +234,21 @@ const editor = useEditor({
     PauseExtension,
     SilenceExtension,
     PolyphonicMarkersExtension,
-    SpeedSpanExtension
+    SpeedSpanExtension,
+    ReadingRulesExtension
   ],
   autofocus: props.autofocus,
   content: serialize(props.modelValue),
   onUpdate({ editor }) {
+    // 如果是内部更新（通过 setContent），不触发 emit，避免循环
+    if (isInternalUpdate) return
+    
     const html = editor.getHTML()
+    // 打印编辑器内的 HTML 内容
+    console.log('[编辑器 HTML 内容]', html)
+    
     const asString = deserialize(html)
+    
     emit('update:modelValue', asString)
     emit('contentChange', asString)
     if (!isSyncingSpeedSegments) {
@@ -281,51 +291,98 @@ const getRenderableMarkers = () => {
 
 const resolveDocRange = (marker) => {
   if (!editor?.value) return null
-  const content = props.modelValue || ''
-  const lines = content.split('\n')
-  let remaining = marker.offset ?? 0
-  let targetLine = -1
-  let innerOffset = 0
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const lineLength = lines[i].length
-    if (remaining < lineLength) {
-      targetLine = i
-      innerOffset = remaining
-      break
-    }
-    remaining -= lineLength
-    if (remaining < 0) break
-    if (i < lines.length - 1) {
-      remaining -= 1
-      if (remaining < 0) break
-    }
-  }
-
-  if (targetLine < 0) return null
-
+  
+  console.log('[解析文档范围] ========== 开始解析 ==========')
+  console.log('  marker:', JSON.stringify(marker))
+  console.log('  offset:', marker.offset, 'length:', marker.length)
+  
+  const targetOffset = marker.offset ?? 0
+  const targetLength = marker.length ?? 1
+  const targetEnd = targetOffset + targetLength
+  
   const doc = editor.value.state.doc
   let foundFrom = null
   let foundTo = null
-  let currentLine = -1
-
-  doc.descendants((node, pos) => {
-    if (node.type.name === 'paragraph') {
-      currentLine += 1
-      if (currentLine === targetLine) {
-        const start = pos + 1 + innerOffset
-        foundFrom = start
-        foundTo = start + (marker.length || 1)
-        return false
-      }
+  const docSize = doc.content.size
+  
+  // 先获取完整文档的纯文本（用于对比）
+  const fullPlainText = getPlainTextWithoutNewlinesBetween(0, doc.content.size)
+  const fullPlainTextWithNewlines = getPlainTextBetween(0, doc.content.size)
+  console.log('[解析文档范围] 文档信息')
+  console.log('  docSize:', docSize)
+  console.log('  fullPlainText (去除换行):', fullPlainText)
+  console.log('  fullPlainTextLength (去除换行):', fullPlainText.length)
+  console.log('  fullPlainText (包含换行):', fullPlainTextWithNewlines)
+  console.log('  fullPlainTextLength (包含换行):', fullPlainTextWithNewlines.length)
+  console.log('  targetOffset:', targetOffset, 'targetEnd:', targetEnd)
+  console.log('  expectedText:', fullPlainText.substring(targetOffset, targetEnd))
+  
+  // 使用去除换行符后的纯文本长度来匹配位置
+  let lastBeforeLength = -1
+  for (let pos = 0; pos <= docSize; pos++) {
+    const beforeText = getPlainTextWithoutNewlinesBetween(0, pos)
+    const beforeLength = beforeText.length
+    
+    // 记录关键位置的变化
+    if (pos % 10 === 0 || beforeLength !== lastBeforeLength) {
+      console.log(`[解析文档范围] 位置 ${pos}: beforeLength=${beforeLength}, targetOffset=${targetOffset}`)
+      lastBeforeLength = beforeLength
     }
-    return true
-  })
+    
+    if (beforeLength === targetOffset && foundFrom === null) {
+      foundFrom = pos
+      console.log(`[解析文档范围] ✓ 找到起始位置: pos=${pos}, beforeLength=${beforeLength}`)
+      
+      // 继续查找结束位置
+      for (let endPos = pos; endPos <= docSize; endPos++) {
+        const endBeforeText = getPlainTextWithoutNewlinesBetween(0, endPos)
+        const endBeforeLength = endBeforeText.length
+        
+        if (endBeforeLength >= targetEnd) {
+          foundTo = endPos
+          console.log(`[解析文档范围] ✓ 找到结束位置: pos=${endPos}, endBeforeLength=${endBeforeLength}, targetEnd=${targetEnd}`)
+          break
+        }
+      }
+      
+      if (foundTo === null) {
+        foundTo = docSize
+        console.log(`[解析文档范围] ⚠ 未找到结束位置，使用文档末尾: ${docSize}`)
+      }
+      
+      break
+    }
+    
+    if (beforeLength > targetOffset) {
+      console.log(`[解析文档范围] ✗ 超过目标位置: pos=${pos}, beforeLength=${beforeLength} > targetOffset=${targetOffset}`)
+      break
+    }
+  }
 
   if (foundFrom == null || foundTo == null) {
+    console.error('[解析文档范围] ✗ 无法找到文档位置', {
+      marker: marker,
+      targetOffset: targetOffset,
+      targetLength: targetLength,
+      docSize: docSize,
+      foundFrom: foundFrom,
+      foundTo: foundTo
+    })
     return null
   }
-  return { from: foundFrom, to: foundTo }
+  
+  const resolvedRange = { from: foundFrom, to: foundTo }
+  const actualText = getPlainTextWithoutNewlinesBetween(foundFrom, foundTo)
+  const actualTextWithNewlines = getPlainTextBetween(foundFrom, foundTo)
+  
+  console.log('[解析文档范围] ========== 解析完成 ==========')
+  console.log('  resolvedRange:', resolvedRange)
+  console.log('  actualText (去除换行):', actualText, 'length:', actualText.length)
+  console.log('  actualText (包含换行):', actualTextWithNewlines, 'length:', actualTextWithNewlines.length)
+  console.log('  expectedText:', fullPlainText.substring(targetOffset, targetEnd), 'length:', targetLength)
+  console.log('  匹配结果:', actualText === fullPlainText.substring(targetOffset, targetEnd) ? '✓ 匹配' : '✗ 不匹配')
+  
+  return resolvedRange
 }
 
 const updatePolyphonicDecorations = () => {
@@ -356,6 +413,64 @@ const schedulePolyphonicUpdate = () => {
   })
 }
 
+// 更新阅读规则标记
+const updateReadingRuleMarkers = () => {
+  if (!editor?.value || !props.readingRules?.length) {
+    editor.value?.chain().clearReadingRuleMarkers().run()
+    return
+  }
+
+  const plainText = getPlainTextBetween(0, editor.value.state.doc.content.size)
+  
+  const markers = props.readingRules.map((rule) => {
+    const pattern = rule.pattern || ''
+    if (!pattern) return null
+    
+    const range = resolveDocRange({
+      offset: 0,
+      length: plainText.length
+    })
+    
+    if (!range) return null
+    
+    // 在纯文本中查找匹配的位置
+    const patternIndex = plainText.indexOf(pattern)
+    if (patternIndex === -1) return null
+    
+    // 计算文档中的位置
+    let docFrom = range.from
+    let docTo = range.to
+    
+    // 简化处理：如果匹配在文本开头，直接使用范围
+    if (patternIndex === 0) {
+      // 需要找到 pattern 在文档中的实际位置
+      const beforeText = getPlainTextBetween(0, docFrom)
+      const actualFrom = beforeText.length
+      const actualTo = actualFrom + pattern.length
+      
+      // 重新计算文档位置
+      const actualRange = resolveDocRange({
+        offset: actualFrom,
+        length: pattern.length
+      })
+      
+      if (!actualRange) return null
+      
+      return {
+        ruleId: rule.ruleId || rule.rule_id || '',
+        pattern: pattern,
+        from: actualRange.from,
+        to: actualRange.to,
+        applied: rule.applied !== false // 默认为 true，除非明确设置为 false
+      }
+    }
+    
+    return null
+  }).filter(Boolean)
+
+  editor.value.chain().setReadingRuleMarkers(markers).run()
+}
+
 const clampLocalSpeed = (value) => {
   const num = Number(value)
   if (Number.isNaN(num)) return 0
@@ -364,21 +479,76 @@ const clampLocalSpeed = (value) => {
   return Math.round(num)
 }
 
-const normalizeSpeedSegments = (segments = []) =>
-  (segments || [])
-    .filter(
-      (item) =>
-        typeof item === 'object' &&
-        typeof item.offset === 'number' &&
-        typeof item.length === 'number' &&
-        item.length > 0
-    )
-    .map((item, index) => ({
+const normalizeSpeedSegments = (segments = []) => {
+  console.log('[规范化语速段落] 开始规范化')
+  console.log('  inputSegments:', segments)
+  console.log('  inputSegmentsCount:', segments?.length || 0)
+  
+  const filtered = (segments || [])
+    .filter((item, index) => {
+      if (typeof item !== 'object') {
+        console.log(`[规范化语速段落] 过滤第 ${index + 1} 项（不是对象）`, { item })
+        return false
+      }
+      // 支持两种格式：{ offset, length, speed } 或 { begin, end, speed }
+      const hasOffsetLength = typeof item.offset === 'number' && typeof item.length === 'number' && item.length > 0
+      const hasBeginEnd = typeof item.begin === 'number' && typeof item.end === 'number' && item.end > item.begin
+      const isValid = hasOffsetLength || hasBeginEnd
+      
+      if (!isValid) {
+        console.log(`[规范化语速段落] 过滤第 ${index + 1} 项（格式无效）`, {
+          item,
+          hasOffsetLength,
+          hasBeginEnd
+        })
+      }
+      
+      return isValid
+    })
+  
+  console.log('[规范化语速段落] 过滤后')
+  console.log('  filteredCount:', filtered.length)
+  console.log('  filtered:', filtered)
+  
+  const normalized = filtered.map((item, index) => {
+      // 如果已经是 { offset, length, speed } 格式，直接使用
+      if (typeof item.offset === 'number' && typeof item.length === 'number') {
+        const result = {
       id: item.id || `speed-${index}-${Date.now()}`,
       offset: Math.max(0, Math.floor(item.offset)),
       length: Math.max(1, Math.floor(item.length)),
       speed: clampLocalSpeed(item.speed)
-    }))
+        }
+        console.log(`[规范化语速段落] 第 ${index + 1} 项（offset/length 格式）`)
+        console.log('  original:', item)
+        console.log('  result:', result)
+        return result
+      }
+      
+      // 如果是 { begin, end, speed } 格式，转换为 { offset, length, speed }
+      const begin = Math.max(0, Math.floor(item.begin || 0))
+      const end = Math.max(begin + 1, Math.floor(item.end || 0))
+      const result = {
+        id: item.id || `speed-${index}-${Date.now()}`,
+        offset: begin,
+        length: end - begin,
+        speed: clampLocalSpeed(item.speed)
+      }
+      
+      console.log(`[规范化语速段落] 第 ${index + 1} 项（begin/end 格式）`)
+      console.log('  original:', item)
+      console.log('  begin:', begin, 'end:', end)
+      console.log('  result:', result)
+      
+      return result
+    })
+  
+  console.log('[规范化语速段落] 规范化完成')
+  console.log('  normalizedCount:', normalized.length)
+  console.log('  normalized:', normalized)
+  
+  return normalized
+}
 
 const clearSpeedSpans = () => {
   if (!editor?.value) return
@@ -397,47 +567,229 @@ const clearSpeedSpans = () => {
 
 const applySpeedSegments = (segments = []) => {
   if (!editor?.value) return
+  
+  console.log('[应用局部语速标记] 开始应用')
+  console.log('  inputSegments:', segments)
+  console.log('  inputSegmentsCount:', segments.length)
+  console.log('  lastApplied:', lastAppliedSpeedSegments.value)
+  
   const normalized = normalizeSpeedSegments(segments)
+  
+  console.log('[应用局部语速标记] 规范化后')
+  console.log('  normalized:', normalized)
+  console.log('  normalizedCount:', normalized.length)
+  
   const serialized = JSON.stringify(normalized)
   if (serialized === lastAppliedSpeedSegments.value) {
+    console.log('[应用局部语速标记] 跳过应用（内容未变化）')
     return
   }
-  isSyncingSpeedSegments = true
-  clearSpeedSpans()
-  normalized.forEach((segment) => {
+  
+  // 先计算所有标记的位置（在清除标记之前）
+  const fullPlainText = getPlainTextWithoutNewlinesBetween(0, editor.value.state.doc.content.size)
+  const fullPlainTextWithNewlines = getPlainTextBetween(0, editor.value.state.doc.content.size)
+  console.log('[应用局部语速标记] ========== 开始应用 ==========')
+  console.log('[应用局部语速标记] 当前文档状态（清除前）')
+  console.log('  docSize:', editor.value.state.doc.content.size)
+  console.log('  fullPlainText (去除换行):', fullPlainText)
+  console.log('  fullPlainTextLength (去除换行):', fullPlainText.length)
+  console.log('  fullPlainText (包含换行):', fullPlainTextWithNewlines)
+  console.log('  fullPlainTextLength (包含换行):', fullPlainTextWithNewlines.length)
+  console.log('  normalizedCount:', normalized.length)
+  console.log('  normalized:', JSON.stringify(normalized, null, 2))
+  
+  // 先解析所有标记的文档范围（在清除标记之前）
+  const rangesToApply = []
+  for (let i = 0; i < normalized.length; i++) {
+    const segment = normalized[i]
+    console.log(`[应用局部语速标记] ========== 预处理第 ${i + 1}/${normalized.length} 个标记 ==========`)
+    console.log('  segment:', JSON.stringify(segment))
+    console.log('  offset:', segment.offset, 'length:', segment.length)
+    console.log('  expectedText:', fullPlainText.substring(segment.offset, segment.offset + segment.length))
+    
     const range = resolveDocRange({
       offset: segment.offset,
       length: segment.length
     })
-    if (!range) return
+    
+    if (!range) {
+      console.error(`[应用局部语速标记] ✗ 无法解析文档范围，跳过`, {
+        segment: segment
+      })
+      continue
+    }
+    
+    const actualText = getPlainTextWithoutNewlinesBetween(range.from, range.to)
+    const expectedText = fullPlainText.substring(segment.offset, segment.offset + segment.length)
+    console.log(`[应用局部语速标记] 预处理结果`)
+    console.log('  range:', range)
+    console.log('  actualText:', actualText, 'length:', actualText.length)
+    console.log('  expectedText:', expectedText, 'length:', segment.length)
+    console.log('  匹配结果:', actualText === expectedText ? '✓ 匹配' : '✗ 不匹配')
+    
+    rangesToApply.push({
+      segment,
+      range
+    })
+  }
+  
+  console.log(`[应用局部语速标记] 预处理完成，共 ${rangesToApply.length} 个标记待应用`)
+  
+  // 现在清除所有标记
+  console.log('[应用局部语速标记] ========== 清除所有标记 ==========')
+  isSyncingSpeedSegments = true
+  clearSpeedSpans()
+  
+  // 重新获取清除后的文档纯文本
+  const fullPlainTextAfterClear = getPlainTextWithoutNewlinesBetween(0, editor.value.state.doc.content.size)
+  const fullPlainTextAfterClearWithNewlines = getPlainTextBetween(0, editor.value.state.doc.content.size)
+  console.log('[应用局部语速标记] 清除标记后的文档状态')
+  console.log('  docSize:', editor.value.state.doc.content.size)
+  console.log('  fullPlainTextAfterClear (去除换行):', fullPlainTextAfterClear)
+  console.log('  fullPlainTextAfterClearLength (去除换行):', fullPlainTextAfterClear.length)
+  console.log('  fullPlainTextAfterClear (包含换行):', fullPlainTextAfterClearWithNewlines)
+  console.log('  fullPlainTextAfterClearLength (包含换行):', fullPlainTextAfterClearWithNewlines.length)
+  console.log('  文本变化:', fullPlainText === fullPlainTextAfterClear ? '✓ 无变化' : '✗ 有变化')
+  
+  // 重新计算所有标记的文档范围
+  const finalRangesToApply = []
+  for (let i = 0; i < rangesToApply.length; i++) {
+    const { segment } = rangesToApply[i]
+    console.log(`[应用局部语速标记] ========== 重新计算第 ${i + 1}/${rangesToApply.length} 个标记 ==========`)
+    console.log('  segment:', JSON.stringify(segment))
+    
+    const range = resolveDocRange({
+      offset: segment.offset,
+      length: segment.length
+    })
+    
+    if (!range) {
+      console.error(`[应用局部语速标记] ✗ 重新计算后仍无法解析文档范围，跳过`, {
+        segment: segment
+      })
+      continue
+    }
+    
+    const actualText = getPlainTextWithoutNewlinesBetween(range.from, range.to)
+    const expectedText = fullPlainTextAfterClear.substring(segment.offset, segment.offset + segment.length)
+    console.log(`[应用局部语速标记] 重新计算结果`)
+    console.log('  range:', range)
+    console.log('  actualText:', actualText, 'length:', actualText.length)
+    console.log('  expectedText:', expectedText, 'length:', segment.length)
+    console.log('  匹配结果:', actualText === expectedText ? '✓ 匹配' : '✗ 不匹配')
+    
+    finalRangesToApply.push({
+      segment,
+      range
+    })
+  }
+  
+  console.log(`[应用局部语速标记] 重新计算完成，共 ${finalRangesToApply.length} 个标记待应用`)
+  
+  // 按 offset 从大到小排序，从后往前应用标记
+  // 这样可以避免应用前面的标记时影响后面标记的位置
+  const sortedRanges = [...finalRangesToApply].sort((a, b) => b.segment.offset - a.segment.offset)
+  console.log('[应用局部语速标记] 排序后的标记（从后往前）')
+  sortedRanges.forEach((item, index) => {
+    console.log(`  ${index + 1}. offset=${item.segment.offset}, length=${item.segment.length}`)
+  })
+  
+  // 应用所有标记（从后往前）
+  console.log('[应用局部语速标记] ========== 开始应用标记（从后往前） ==========')
+  for (let i = 0; i < sortedRanges.length; i++) {
+    const { segment, range } = sortedRanges[i]
+    console.log(`[应用局部语速标记] 应用第 ${i + 1}/${sortedRanges.length} 个标记（offset=${segment.offset}）`)
+    console.log('  segment:', JSON.stringify(segment))
+    console.log('  range:', range)
+    
+    const beforeApplyText = getPlainTextWithoutNewlinesBetween(range.from, range.to)
+    console.log('  应用前选中文本:', beforeApplyText, 'length:', beforeApplyText.length)
+    
     editor.value
       .chain()
       .focus()
       .setTextSelection({ from: range.from, to: range.to })
       .wrapSpeedSpan({ speed: segment.speed, uid: segment.id })
       .run()
-  })
+    
+    // 应用后立即检查
+    const afterApplyText = getPlainTextWithoutNewlinesBetween(range.from, range.to)
+    console.log('  应用后选中文本:', afterApplyText, 'length:', afterApplyText.length)
+    console.log('  应用结果:', beforeApplyText === afterApplyText ? '✓ 文本一致' : '✗ 文本不一致')
+    
+    // 如果文本不一致，说明位置计算有问题，需要重新计算后续标记
+    if (beforeApplyText !== afterApplyText) {
+      console.warn(`[应用局部语速标记] ⚠ 标记应用后文本不一致，可能需要重新计算后续标记`)
+    }
+  }
+  
   isSyncingSpeedSegments = false
   lastAppliedSpeedSegments.value = serialized
+  
+  console.log('[应用局部语速标记] 应用完成')
+  console.log('  appliedCount:', finalRangesToApply.length)
+  console.log('  lastApplied:', lastAppliedSpeedSegments.value)
 }
 
 const collectSpeedSegments = () => {
   if (!editor?.value) return []
   const segments = []
+  const fullPlainText = getPlainTextWithoutNewlinesBetween(0, editor.value.state.doc.content.size)
+  const fullPlainTextWithNewlines = getPlainTextBetween(0, editor.value.state.doc.content.size)
+  
+  console.log('[收集局部语速标记] ========== 开始收集 ==========')
+  console.log('  docSize:', editor.value.state.doc.content.size)
+  console.log('  fullPlainText (去除换行):', fullPlainText)
+  console.log('  fullPlainTextLength (去除换行):', fullPlainText.length)
+  console.log('  fullPlainText (包含换行):', fullPlainTextWithNewlines)
+  console.log('  fullPlainTextLength (包含换行):', fullPlainTextWithNewlines.length)
+  
   editor.value.state.doc.descendants((node, pos) => {
     if (node.type.name !== SpeedSpanNodeName) return true
+    
+    // 计算局部变速标记的文档范围
     const start = pos + 1
     const end = pos + node.nodeSize - 1
-    const offset = getPlainTextBetween(0, start).length
-    const length = getPlainTextBetween(start, end).length
-    segments.push({
+    
+    // 获取原始文本（包含换行符）和去除换行符后的文本
+    const beforeTextWithNewlines = getPlainTextBetween(0, start)
+    const segmentTextWithNewlines = getPlainTextBetween(start, end)
+    const beforeText = getPlainTextWithoutNewlinesBetween(0, start)
+    const segmentText = getPlainTextWithoutNewlinesBetween(start, end)
+    
+    const offset = beforeText.length
+    const length = segmentText.length
+    
+    const segment = {
       id: node.attrs?.uid || `speed-${offset}-${Date.now()}`,
       offset,
       length,
       speed: clampLocalSpeed(node.attrs?.speed)
-    })
+    }
+    
+    console.log('[收集局部语速标记] ========== 发现标记 ==========')
+    console.log('  nodePos:', pos)
+    console.log('  start:', start, 'end:', end)
+    console.log('  nodeSize:', node.nodeSize)
+    console.log('  beforeText (包含换行):', beforeTextWithNewlines, 'length:', beforeTextWithNewlines.length)
+    console.log('  beforeText (去除换行):', beforeText, 'length:', beforeText.length)
+    console.log('  segmentText (包含换行):', segmentTextWithNewlines, 'length:', segmentTextWithNewlines.length)
+    console.log('  segmentText (去除换行):', segmentText, 'length:', segmentText.length)
+    console.log('  offset:', offset, 'length:', length)
+    console.log('  speed:', segment.speed)
+    console.log('  nodeAttrs:', node.attrs)
+    console.log('  segment:', JSON.stringify(segment))
+    console.log('  验证: fullPlainText.substring(offset, offset+length) =', fullPlainText.substring(offset, offset + length))
+    console.log('  验证结果:', fullPlainText.substring(offset, offset + length) === segmentText ? '✓ 匹配' : '✗ 不匹配')
+    
+    segments.push(segment)
     return false
   })
+  
+  console.log('[收集局部语速标记] ========== 收集完成 ==========')
+  console.log('  segmentsCount:', segments.length)
+  console.log('  segments:', JSON.stringify(segments, null, 2))
+  
   return segments
 }
 
@@ -445,6 +797,18 @@ watch(
   () => [props.modelValue, props.polyphonicMarkers, props.showPolyphonicHints],
   () => {
     schedulePolyphonicUpdate()
+  },
+  { deep: true }
+)
+
+watch(
+  () => [props.modelValue, props.readingRules],
+  () => {
+    if (editor?.value) {
+      nextTick(() => {
+        updateReadingRuleMarkers()
+      })
+    }
   },
   { deep: true }
 )
@@ -464,36 +828,58 @@ watch(
 
 const insertPause = (duration = DEFAULT_PAUSE_DURATION) => {
   if (!editor?.value) return
-  editor.value
-    .chain()
-    .focus()
-    .insertContent({
-      type: PauseNodeName,
-      attrs: {
-        duration: (() => {
-          const num = Number(duration)
-          if (!Number.isFinite(num) || num < 0) {
-            return DEFAULT_PAUSE_DURATION
-          }
-          return num.toFixed(1)
-        })()
-      }
-    })
-    .run()
+  // 设置内部更新标志，避免触发响应式更新循环
+  isInternalUpdate = true
+  try {
+    editor.value
+      .chain()
+      .focus()
+      .insertContent({
+        type: PauseNodeName,
+        attrs: {
+          duration: (() => {
+            const num = Number(duration)
+            if (!Number.isFinite(num) || num < 0) {
+              return DEFAULT_PAUSE_DURATION
+            }
+            return num.toFixed(1)
+          })()
+        }
+      })
+      .run()
+    // 延迟重置标志，确保 NodeView 渲染完成
+    setTimeout(() => {
+      isInternalUpdate = false
+    }, 100)
+  } catch (error) {
+    isInternalUpdate = false
+    console.error('插入停顿失败:', error)
+  }
 }
 
 const insertSilence = (duration = '0') => {
   if (!editor?.value) return
-  editor.value
-    .chain()
-    .focus()
-    .insertContent({
-      type: SilenceNodeName,
-      attrs: {
-        duration: duration.toString()
-      }
-    })
-    .run()
+  // 设置内部更新标志，避免触发响应式更新循环
+  isInternalUpdate = true
+  try {
+    editor.value
+      .chain()
+      .focus()
+      .insertContent({
+        type: SilenceNodeName,
+        attrs: {
+          duration: duration.toString()
+        }
+      })
+      .run()
+    // 延迟重置标志，确保 NodeView 渲染完成
+    setTimeout(() => {
+      isInternalUpdate = false
+    }, 100)
+  } catch (error) {
+    isInternalUpdate = false
+    console.error('插入静音失败:', error)
+  }
 }
 
 const applyLocalSpeedRange = (from, to, speed, uid) => {
@@ -569,11 +955,35 @@ const detachDomEvents = () => {
   domRef = null
 }
 
+// 获取编辑器内容（包含停顿标记）
+const getContent = () => {
+  if (!editor?.value) return ''
+  const html = editor.value.getHTML()
+  // 打印编辑器内的 HTML 内容
+  console.log('[编辑器 HTML 内容 (getContent)]', html)
+  return deserialize(html)
+}
+
+// 设置阅读规则标记
+const setReadingRuleMarkers = (markers) => {
+  if (!editor?.value) return
+  editor.value.chain().setReadingRuleMarkers(markers).run()
+}
+
+// 清除阅读规则标记
+const clearReadingRuleMarkers = () => {
+  if (!editor?.value) return
+  editor.value.chain().clearReadingRuleMarkers().run()
+}
+
 defineExpose({
   insertPause,
   insertSilence,
   focus: () => editor?.value?.commands.focus(),
-  applyLocalSpeedRange
+  applyLocalSpeedRange,
+  getContent,
+  setReadingRuleMarkers,
+  clearReadingRuleMarkers
 })
 
 onBeforeUnmount(() => {
@@ -584,13 +994,26 @@ onBeforeUnmount(() => {
 watch(
   () => props.modelValue,
   (val) => {
-    if (!editor?.value) return
+    if (!editor?.value || isInternalUpdate) return
     const current = deserialize(editor.value.getHTML())
-    if (current !== val) {
-      editor.value.commands.setContent(serialize(val || ''))
-      nextTick(() => {
-        applySpeedSegments(props.speedSegments || [])
-      })
+    // 更精确的比较：去除空白字符后比较，避免因格式差异导致的循环
+    const normalizedCurrent = current.trim()
+    const normalizedVal = (val || '').trim()
+    if (normalizedCurrent !== normalizedVal) {
+      isInternalUpdate = true
+      try {
+        editor.value.commands.setContent(serialize(val || ''))
+        // 使用 setTimeout 确保在下一个事件循环中重置标志
+        setTimeout(() => {
+          isInternalUpdate = false
+          nextTick(() => {
+            applySpeedSegments(props.speedSegments || [])
+          })
+        }, 0)
+      } catch (error) {
+        isInternalUpdate = false
+        console.error('设置编辑器内容失败:', error)
+      }
     }
   }
 )
@@ -600,6 +1023,18 @@ watch(
   (segments) => {
     if (!editor?.value) return
     applySpeedSegments(segments || [])
+  },
+  { deep: true }
+)
+
+watch(
+  () => props.readingRules,
+  () => {
+    if (editor?.value) {
+      nextTick(() => {
+        updateReadingRuleMarkers()
+      })
+    }
   },
   { deep: true }
 )
@@ -654,6 +1089,28 @@ watch(
 .rich-text-editor__content :deep(.polyphonic-marker--resolved) {
   background: #ffe6aa;
   color: #704b00;
+}
+
+.rich-text-editor__content :deep(.reading-rule-marker) {
+  border-radius: 4px;
+  padding: 0 3px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.rich-text-editor__content :deep(.reading-rule-marker--pending) {
+  background: rgba(64, 158, 255, 0.2);
+  color: #409eff;
+}
+
+.rich-text-editor__content :deep(.reading-rule-marker--applied) {
+  background: rgba(64, 158, 255, 0.4);
+  color: #1d5cb8;
 }
 </style>
 

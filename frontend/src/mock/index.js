@@ -11,30 +11,48 @@ const DEFAULT_TEXT =
 我们干的是前无古人的开创性事业，进行人类史上非常宏大而独特的实践创新，关键要有自信、有定力、有行动。在以习近平同志为核心的党中央坚强领导下，全面贯彻习近平法治思想，沿着中国特色社会主义法治道路砥砺前行，筑牢法治之基，汇聚法治力量，中国式现代化就一定能行稳致远。`
 
 let mockTask = {
-  task_id: 'mock-task-001',
+  taskId: 1,
+  mergeId: null,
   content: DEFAULT_TEXT,
-  char_count: DEFAULT_TEXT.length,
-  status: 2,
-  merged_audio_url: '',
-  merged_audio_duration: null,
-  sentences: []
+  charCount: DEFAULT_TEXT.length,
+  status: 0, // 0-拆句完成
+  audioUrl: '',
+  audioDuration: null,
+  mergedAudioUrl: '',
+  mergedAudioDuration: null,
+  ssml: '',
+  totalSentences: 0,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  sentences: [],
+  breakingSentences: []
 }
 
 let sentenceSeq = 1
+let breakingSentenceSeq = 1
 
-const buildSentence = (content, parentId = 0) => ({
-  sentence_id: `mock-s-${sentenceSeq++}`,
+// 构建拆句（sentences）
+const buildSentence = (content, parentId = 0, sequence) => ({
+  sentenceId: sentenceSeq++,
+  parentId: parentId,
+  sequence: sequence || sentenceSeq - 1,
+  charCount: content.length,
   content,
-  duration: Math.max(3, Math.floor(content.length / 4)),
-  audio_url: '',
-  voice: 'female1',
-  volume: 70,
-  speed: 0,
-  pitch: 50,
-  parent_id: parentId,
-  content_type: parentId === 0 ? 'original' : 'insert',
-  display_order: sentenceSeq,
-  speedSegments: []
+  audioUrl: '',
+  audioDuration: 0,
+  ssml: ''
+})
+
+// 构建断句（breakingSentences）
+const buildBreakingSentence = (content, originalSentenceId, sequence) => ({
+  breakingSentenceId: breakingSentenceSeq++,
+  originalSentenceId: originalSentenceId,
+  sequence: sequence || breakingSentenceSeq - 1,
+  content,
+  synthesisStatus: 0, // 0-未合成，1-合成中，2-已合成，3-合成失败
+  audioUrl: '',
+  audioDuration: 0,
+  ssml: ''
 })
 
 const splitContent = (content) => {
@@ -49,9 +67,19 @@ const splitContent = (content) => {
 }
 
 const rebuildSentences = (content) => {
-  mockTask.sentences = splitContent(content).map((sentence) =>
-    buildSentence(sentence, 0)
+  const parts = splitContent(content)
+  mockTask.sentences = parts.map((sentence, index) =>
+    buildSentence(sentence, 0, index + 1)
   )
+  // 每个拆句默认生成一条断句
+  mockTask.breakingSentences = []
+  parts.forEach((sentence, index) => {
+    const originalSentence = mockTask.sentences[index]
+    mockTask.breakingSentences.push(
+      buildBreakingSentence(sentence, originalSentence.sentenceId, index + 1)
+    )
+  })
+  mockTask.totalSentences = mockTask.sentences.length
 }
 
 // 初始化一次
@@ -62,89 +90,397 @@ const mockResponse = async (data) => {
   return data
 }
 
-export const mockCreateTask = async ({ content }) => {
+export const mockCreateTask = async ({ content, delimiters = [1, 2, 3] }) => {
+  const taskId = Date.now()
   mockTask = {
     ...mockTask,
-    task_id: `mock-task-${Date.now()}`,
+    taskId,
     content,
-    char_count: content.length
+    charCount: content.length,
+    status: 0, // 拆句完成
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   }
   rebuildSentences(content)
   return mockResponse({
-    task_id: mockTask.task_id,
-    char_count: mockTask.char_count
+    taskId: mockTask.taskId,
+    mergeId: mockTask.mergeId,
+    content: mockTask.content,
+    charCount: mockTask.charCount,
+    status: mockTask.status,
+    audioUrl: mockTask.audioUrl,
+    audioDuration: mockTask.audioDuration,
+    createdAt: mockTask.createdAt,
+    updatedAt: mockTask.updatedAt
   })
 }
 
-export const mockGetTask = async () => {
-  return mockResponse({ ...mockTask })
+export const mockGetTask = async (taskId) => {
+  return mockResponse({
+    taskId: mockTask.taskId,
+    mergeId: mockTask.mergeId,
+    content: mockTask.content,
+    charCount: mockTask.charCount,
+    status: mockTask.status,
+    mergedAudioUrl: mockTask.mergedAudioUrl,
+    mergedAudioDuration: mockTask.mergedAudioDuration,
+    ssml: mockTask.ssml,
+    totalSentences: mockTask.totalSentences,
+    createdAt: mockTask.createdAt,
+    updatedAt: mockTask.updatedAt,
+    sentences: mockTask.sentences.map(s => ({ ...s })),
+    breakingSentences: mockTask.breakingSentences.map(bs => ({ ...bs }))
+  })
+}
+
+/**
+ * Mock 获取拆句列表（新接口格式）
+ * api.md: page 从 0 开始
+ */
+export const mockGetOriginalSentenceList = async (taskId, page = 0, pageSize = 20) => {
+  // 将现有的 sentences 和 breakingSentences 转换为新接口格式
+  const originalSentences = mockTask.sentences.map((originalSentence) => {
+    // 找到该拆句下的所有断句
+    const breakingSentences = mockTask.breakingSentences
+      .filter(bs => bs.originalSentenceId === originalSentence.sentenceId)
+      .map(bs => ({
+        breakingSentenceId: bs.breakingSentenceId,
+        taskId: mockTask.taskId,
+        originalSentenceId: bs.originalSentenceId,
+        content: bs.content,
+        charCount: bs.content.length,
+        sequence: bs.sequence,
+        synthesisStatus: bs.synthesisStatus,
+        audioUrl: bs.audioUrl,
+        audioDuration: bs.audioDuration,
+        ssml: bs.ssml,
+        jobId: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        setting: {
+          content: bs.content,
+          volume: 140,
+          voiceId: 'default',
+          breakList: [],
+          phonemeList: [],
+          prosodyList: [], // api.md: 使用 prosodyList
+          silentList: [] // api.md: 新增静音列表
+        }
+      }))
+
+    return {
+      originalSentenceId: originalSentence.sentenceId,
+      sequence: originalSentence.sequence,
+      content: originalSentence.content,
+      synthesisStatus: 0,
+      audioUrl: originalSentence.audioUrl || '',
+      audioDuration: originalSentence.audioDuration || 0,
+      breakingSentenceList: breakingSentences
+    }
+  })
+
+  return mockResponse({
+    list: originalSentences,
+    total: originalSentences.length,
+    page: page,
+    pageSize: pageSize
+  })
 }
 
 export const mockGetTaskSentences = async () => {
   return mockResponse({
-    task_id: mockTask.task_id,
+    taskId: mockTask.taskId,
     sentences: mockTask.sentences.map((item) => ({ ...item }))
   })
 }
 
-export const mockMergeAudio = async () => {
-  mockTask.merged_audio_url =
-    mockTask.merged_audio_url ||
+export const mockMergeAudio = async (taskId) => {
+  const mergeId = Date.now()
+  mockTask.mergeId = mergeId
+  mockTask.mergedAudioUrl =
+    mockTask.mergedAudioUrl ||
     'https://cdn.example.com/mock/merged_audio_mock.mp3'
+  mockTask.mergedAudioDuration = 120 // 模拟音频时长
+  mockTask.status = 5 // 语音合并成功
   return mockResponse({
-    merged_audio_url: mockTask.merged_audio_url
+    mergeId: mockTask.mergeId,
+    taskId: mockTask.taskId,
+    mergedAudioUrl: mockTask.mergedAudioUrl,
+    audioDuration: mockTask.mergedAudioDuration,
+    status: 'success'
   })
 }
 
+// 兼容旧的 sentence.js 使用的 mock 函数（保持向后兼容）
 export const mockGetSentence = async (sentenceId) => {
-  const sentence = mockTask.sentences.find(
-    (item) => item.sentence_id === sentenceId
+  // 统一ID比较函数，支持数字和字符串
+  const matchId = (id1, id2) => {
+    if (id1 == null || id2 == null) return false
+    // 尝试多种比较方式
+    if (id1 === id2) return true
+    if (String(id1) === String(id2)) return true
+    if (Number(id1) === Number(id2) && !isNaN(Number(id1)) && !isNaN(Number(id2))) return true
+    return false
+  }
+
+  // 调试信息
+  console.log('[mockGetSentence] 查找句子ID:', sentenceId, typeof sentenceId)
+  console.log('[mockGetSentence] sentences数量:', mockTask.sentences.length)
+  console.log('[mockGetSentence] breakingSentences数量:', mockTask.breakingSentences.length)
+  
+  // 输出所有可用的ID用于调试
+  const allSentenceIds = mockTask.sentences.map(s => ({ 
+    sentenceId: s.sentenceId, 
+    sentence_id: s.sentence_id,
+    content: s.content?.substring(0, 20) 
+  }))
+  const allBreakingIds = mockTask.breakingSentences.map(bs => ({ 
+    breakingSentenceId: bs.breakingSentenceId,
+    originalSentenceId: bs.originalSentenceId,
+    content: bs.content?.substring(0, 20)
+  }))
+  console.log('[mockGetSentence] 所有sentences ID:', allSentenceIds)
+  console.log('[mockGetSentence] 所有breakingSentences ID:', allBreakingIds)
+
+  // 先在 sentences 中查找（拆句/根句子）
+  let sentence = mockTask.sentences.find(
+    (item) => matchId(item.sentenceId, sentenceId) || matchId(item.sentence_id, sentenceId)
   )
-  if (!sentence) throw new Error('未找到句子')
-  return mockResponse({ ...sentence })
+
+  if (sentence) {
+    console.log('[mockGetSentence] 在sentences中找到:', sentence.sentenceId || sentence.sentence_id)
+  } else {
+    console.log('[mockGetSentence] 在sentences中未找到，继续查找breakingSentences')
+  }
+
+  // 如果没找到，在 breakingSentences 中查找（断句/子句子）
+  if (!sentence) {
+    const breakingSentence = mockTask.breakingSentences.find(
+      (item) => matchId(item.breakingSentenceId, sentenceId)
+    )
+    
+    if (breakingSentence && import.meta.env.DEV) {
+      console.log('[mockGetSentence] 在breakingSentences中找到:', breakingSentence.breakingSentenceId)
+    }
+    
+    if (breakingSentence) {
+      // 找到对应的拆句，用于获取父级信息
+      const originalSentence = mockTask.sentences.find(
+        (item) => item.sentenceId === breakingSentence.originalSentenceId
+      )
+      
+      // 构造兼容格式的句子对象
+      sentence = {
+        sentenceId: breakingSentence.breakingSentenceId,
+        sentence_id: breakingSentence.breakingSentenceId,
+        parentId: breakingSentence.originalSentenceId,
+        parent_id: breakingSentence.originalSentenceId,
+        content: breakingSentence.content,
+        audioUrl: breakingSentence.audioUrl,
+        audio_url: breakingSentence.audioUrl,
+        audioDuration: breakingSentence.audioDuration,
+        display_order: breakingSentence.sequence,
+        // 从 setting 中获取参数（如果有）
+        voice: 'default',
+        volume: 140,
+        speed: 0,
+        pitch: 50,
+        speedSegments: [],
+        pauseMarkers: [],
+        polyphonicOverrides: [],
+        silenceMarkers: [],
+        readingRules: []
+      }
+    }
+  }
+
+  if (!sentence) {
+    // 输出更详细的错误信息
+    const availableIds = [
+      ...mockTask.sentences.map(s => s.sentenceId || s.sentence_id),
+      ...mockTask.breakingSentences.map(bs => bs.breakingSentenceId)
+    ]
+    console.error('[mockGetSentence] 未找到句子，查找ID:', sentenceId)
+    console.error('[mockGetSentence] 可用的ID列表:', availableIds)
+    throw new Error(`未找到句子，ID: ${sentenceId}`)
+  }
+
+  // 返回兼容格式
+  return mockResponse({
+    ...sentence,
+    sentence_id: sentence.sentenceId || sentence.sentence_id || sentenceId,
+    audio_url: sentence.audioUrl || sentence.audio_url || '',
+    parent_id: sentence.parentId || sentence.parent_id || 0
+  })
 }
 
 export const mockUpdateSentence = async (sentenceId, data) => {
-  const index = mockTask.sentences.findIndex(
-    (item) => item.sentence_id === sentenceId
-  )
-  if (index === -1) throw new Error('未找到句子')
-  mockTask.sentences[index] = {
-    ...mockTask.sentences[index],
-    ...data
+  // 统一ID比较函数
+  const matchId = (id1, id2) => {
+    if (id1 == null || id2 == null) return false
+    return id1 === id2 || String(id1) === String(id2) || Number(id1) === Number(id2)
   }
-  return mockResponse({ success: true })
+
+  // 先在 sentences 中查找（拆句）
+  let index = mockTask.sentences.findIndex(
+    (item) => matchId(item.sentenceId, sentenceId) || matchId(item.sentence_id, sentenceId)
+  )
+
+  if (index !== -1) {
+    mockTask.sentences[index] = {
+      ...mockTask.sentences[index],
+      ...data
+    }
+    return mockResponse({ success: true })
+  }
+
+  // 如果没找到，在 breakingSentences 中查找（断句）
+  index = mockTask.breakingSentences.findIndex(
+    (item) => matchId(item.breakingSentenceId, sentenceId)
+  )
+
+  if (index !== -1) {
+    mockTask.breakingSentences[index] = {
+      ...mockTask.breakingSentences[index],
+      ...data
+    }
+    return mockResponse({ success: true })
+  }
+
+  throw new Error('未找到句子')
 }
 
 export const mockDeleteSentence = async (sentenceId) => {
-  mockTask.sentences = mockTask.sentences.filter(
-    (item) => item.sentence_id !== sentenceId
+  // 统一ID比较函数
+  const matchId = (id1, id2) => {
+    if (id1 == null || id2 == null) return false
+    return id1 === id2 || String(id1) === String(id2) || Number(id1) === Number(id2)
+  }
+
+  // 先在 sentences 中查找并删除（拆句）
+  const sentenceIndex = mockTask.sentences.findIndex(
+    (item) => matchId(item.sentenceId, sentenceId) || matchId(item.sentence_id, sentenceId)
   )
-  return mockResponse({ success: true })
+
+  if (sentenceIndex !== -1) {
+    const deletedSentence = mockTask.sentences[sentenceIndex]
+    // 删除拆句
+    mockTask.sentences.splice(sentenceIndex, 1)
+    // 同时删除该拆句下的所有断句
+    mockTask.breakingSentences = mockTask.breakingSentences.filter(
+      (item) => item.originalSentenceId !== deletedSentence.sentenceId
+    )
+    return mockResponse({ success: true })
+  }
+
+  // 如果没找到，在 breakingSentences 中查找并删除（断句）
+  const breakingIndex = mockTask.breakingSentences.findIndex(
+    (item) => matchId(item.breakingSentenceId, sentenceId)
+  )
+
+  if (breakingIndex !== -1) {
+    mockTask.breakingSentences.splice(breakingIndex, 1)
+    return mockResponse({ success: true })
+  }
+
+  throw new Error('未找到句子')
 }
 
 export const mockInsertSentenceAfter = async (sentenceId, { content }) => {
   const index = mockTask.sentences.findIndex(
-    (item) => item.sentence_id === sentenceId
+    (item) => item.sentenceId === sentenceId || item.sentence_id === sentenceId
   )
   if (index === -1) throw new Error('未找到句子')
   const parentId =
-    mockTask.sentences[index].parent_id === 0
-      ? mockTask.sentences[index].sentence_id
-      : mockTask.sentences[index].parent_id
-  const newSentence = buildSentence(content, parentId)
+    (mockTask.sentences[index].parentId || mockTask.sentences[index].parent_id) === 0
+      ? (mockTask.sentences[index].sentenceId || mockTask.sentences[index].sentence_id)
+      : (mockTask.sentences[index].parentId || mockTask.sentences[index].parent_id)
+  const newSentence = buildSentence(content, parentId, mockTask.sentences.length + 1)
   mockTask.sentences.splice(index + 1, 0, newSentence)
-  return mockResponse({ ...newSentence })
+  // 返回兼容格式
+  return mockResponse({
+    ...newSentence,
+    sentence_id: newSentence.sentenceId,
+    audio_url: newSentence.audioUrl,
+    parent_id: newSentence.parentId
+  })
 }
 
 export const mockSynthesizeSentence = async (sentenceId) => {
-  const index = mockTask.sentences.findIndex(
-    (item) => item.sentence_id === sentenceId
+  // 统一ID比较函数
+  const matchId = (id1, id2) => {
+    if (id1 == null || id2 == null) return false
+    return id1 === id2 || String(id1) === String(id2) || Number(id1) === Number(id2)
+  }
+
+  // 先在 sentences 中查找（拆句）
+  let index = mockTask.sentences.findIndex(
+    (item) => matchId(item.sentenceId, sentenceId) || matchId(item.sentence_id, sentenceId)
   )
-  if (index === -1) throw new Error('未找到句子')
-  mockTask.sentences[index].audio_url = `https://cdn.example.com/mock/${sentenceId}.mp3`
+
+  if (index !== -1) {
+    const audioUrl = `https://cdn.example.com/mock/${sentenceId}.mp3`
+    mockTask.sentences[index].audioUrl = audioUrl
+    mockTask.sentences[index].audio_url = audioUrl // 兼容旧字段
+    mockTask.sentences[index].audioDuration = Math.max(3, Math.floor(mockTask.sentences[index].content.length / 4))
+    return mockResponse({
+      audioUrl,
+      audio_url: audioUrl // 兼容旧字段
+    })
+  }
+
+  // 如果没找到，在 breakingSentences 中查找（断句）
+  index = mockTask.breakingSentences.findIndex(
+    (item) => matchId(item.breakingSentenceId, sentenceId)
+  )
+
+  if (index !== -1) {
+    const audioUrl = `https://cdn.example.com/mock/${sentenceId}.mp3`
+    mockTask.breakingSentences[index].audioUrl = audioUrl
+    mockTask.breakingSentences[index].synthesisStatus = 2 // 已合成
+    mockTask.breakingSentences[index].audioDuration = Math.max(3, Math.floor(mockTask.breakingSentences[index].content.length / 4))
+    return mockResponse({
+      audioUrl,
+      audio_url: audioUrl // 兼容旧字段
+    })
+  }
+
+  throw new Error('未找到句子')
+}
+
+// 获取音色列表
+export const mockGetVoiceList = async () => {
+  await delay(300)
   return mockResponse({
-    audio_url: mockTask.sentences[index].audio_url
+    list: [
+      {
+        voiceId: 'default',
+        voiceName: '唐瑶',
+        voiceType: 'news',
+        sortOrder: 1,
+        avatar_url: '', // api.md: 使用 avatar_url
+        language: 'zh-CN',
+        isRecommended: 1
+      },
+      {
+        voiceId: 'female1',
+        voiceName: '果子',
+        voiceType: 'children',
+        sortOrder: 2,
+        avatar_url: '', // api.md: 使用 avatar_url
+        language: 'zh-CN',
+        isRecommended: 0
+      },
+      {
+        voiceId: 'male1',
+        voiceName: '杨笙',
+        voiceType: 'image',
+        sortOrder: 3,
+        avatar_url: '', // api.md: 使用 avatar_url
+        language: 'zh-CN',
+        isRecommended: 0
+      }
+    ]
   })
 }
 

@@ -2,7 +2,7 @@
   <div class="sub-textarea-list">
     <div
       v-for="(sub, subIndex) in subs"
-      :key="sub.sentence_id"
+      :key="`${sub.parent_id}-${sub.sentence_id}-${subIndex}`"
       class="sub-textarea-item"
       @click="emitSelect(sub)"
     >
@@ -22,15 +22,19 @@
           :show-polyphonic-hints="isPolyphonicModeActive(sub)"
           :is-active="editingSubSentenceId === sub.sentence_id"
           :speed-segments="sub.speedSegments || []"
+          :reading-rules="getReadingRuleMarkers(sub)"
           @selection-change="(payload) => emitSelectionChange(sub, payload)"
           @content-change="() => emitContentChange(sub)"
           @polyphonic-hover="(payload) => emitPolyphonicHover(sub, payload)"
           @focus="() => emitEditorFocus(sub)"
           @speed-segments-change="(segments) => emitSpeedSegmentsChange(sub, segments)"
+          @reading-rule-hover="(payload) => emitReadingRuleHover(sub, payload)"
+          @reading-rule-toggle="(payload) => emitReadingRuleToggle(sub, payload)"
         />
         <div class="textarea-floating-links" @click.stop>
           <SentenceActionLinks
-            :audio-url="sub.audio_url"
+            :audio-url="getSubAudioUrl(sub)"
+            :synthesis-status="getSubSynthesisStatus(sub)"
             @play="$emit('play', sub)"
             @synthesize="$emit('synthesize', sub.sentence_id)"
             @insert-after="$emit('insert-after', sub.sentence_id)"
@@ -67,6 +71,18 @@ const props = defineProps({
   setEditorRef: {
     type: Function,
     required: true
+  },
+  getBreakingSentenceStatus: {
+    type: Function,
+    default: null
+  },
+  getReadingRuleMarkers: {
+    type: Function,
+    default: () => () => []
+  },
+  toggleReadingRule: {
+    type: Function,
+    default: null
   }
 })
 
@@ -80,7 +96,9 @@ const emit = defineEmits([
   'synthesize',
   'insert-after',
   'delete',
-  'speed-segments-change'
+  'speed-segments-change',
+  'reading-rule-hover',
+  'reading-rule-toggle'
 ])
 
 const emitSelect = (sub) => {
@@ -113,6 +131,31 @@ const setEditorRef = (sentenceId, instance) => {
 
 const getPolyphonicMarkers = (sub) => props.getPolyphonicMarkers(sub)
 const isPolyphonicModeActive = (sub) => props.isPolyphonicModeActive(sub)
+const getReadingRuleMarkers = (sub) => props.getReadingRuleMarkers(sub)
+
+const emitReadingRuleHover = (sub, payload) => {
+  emit('reading-rule-hover', { sub, payload })
+}
+
+const emitReadingRuleToggle = (sub, payload) => {
+  if (props.toggleReadingRule) {
+    props.toggleReadingRule(sub.sentence_id, payload.ruleId, payload.pattern, payload.applied)
+  }
+  emit('reading-rule-toggle', { sub, payload })
+}
+
+// 优化：将状态获取移到方法中，避免在模板中多次调用
+const getSubAudioUrl = (sub) => {
+  if (!props.getBreakingSentenceStatus) return sub.audio_url
+  const status = props.getBreakingSentenceStatus(sub.sentence_id)
+  return status?.audioUrl || sub.audio_url
+}
+
+const getSubSynthesisStatus = (sub) => {
+  if (!props.getBreakingSentenceStatus) return 'pending'
+  const status = props.getBreakingSentenceStatus(sub.sentence_id)
+  return status?.status || 'pending'
+}
 </script>
 
 <style scoped>
