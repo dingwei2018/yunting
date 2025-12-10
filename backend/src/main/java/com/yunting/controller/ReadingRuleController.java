@@ -80,12 +80,12 @@ public class ReadingRuleController {
      * 获取文本中符合规则的字段列表
      * 从文本中提取符合阅读规则的字段列表
      *
-     * @param text 文本内容（可选）
+     * @param text 文本内容（必选）
      * @return 匹配的字段列表响应，包含匹配字段总数和字段列表（包含规则ID、位置、模式和开关状态）
      */
     @GetMapping("/getMatchingFieldListFromText")
     public ApiResponse<MatchingFieldListResponseDTO> getMatchingFieldListFromText(
-            @RequestParam(value = "text", required = false) String text) {
+            @RequestParam(value = "text") String text) {
         MatchingFieldListResponseDTO data = readingRuleService.getMatchingFieldListFromText(text);
         return ResponseUtil.success(data);
     }

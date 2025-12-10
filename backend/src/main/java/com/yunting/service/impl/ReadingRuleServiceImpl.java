@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -148,8 +149,6 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
             throw new BusinessException(10404, "任务不存在");
         }
 
-        List<ReadingRuleApplication> applications = new ArrayList<>();
-
         // 判断是否有breakingSentenceId
         if (request.getBreakingSentenceId() != null) {
             // 如果breakingSentenceId有值，则type=1（任务级），只处理这个断句
@@ -162,28 +161,43 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
                 throw new BusinessException(10400, "断句不属于该任务");
             }
 
+            // 对于有breakingSentenceId的情况，使用原有的插入或更新逻辑
+            List<ReadingRuleApplication> applications = new ArrayList<>();
             ReadingRuleApplication application = new ReadingRuleApplication();
             application.setRuleId(request.getRuleId());
             application.setFromId(request.getBreakingSentenceId());
             application.setType(ReadingRuleApplicationType.Type.TASK); // type = 1（任务级）
             application.setIsOpen(request.getIsOpen());
             applications.add(application);
-        } else {
-            // 如果breakingSentenceId为空，则type=1（任务级），from_id为taskId，只创建一条记录
-            ReadingRuleApplication application = new ReadingRuleApplication();
-            application.setRuleId(request.getRuleId());
-            application.setFromId(request.getTaskId()); // from_id为taskId
-            application.setType(ReadingRuleApplicationType.Type.TASK); // type = 1（任务级）
-            application.setIsOpen(request.getIsOpen());
-            applications.add(application);
-        }
 
-        if (!applications.isEmpty()) {
-            // 使用 INSERT ... ON DUPLICATE KEY UPDATE 来处理唯一索引冲突
-            // 如果记录已存在，则更新isOpen；如果不存在，则插入新记录
             int affectedRows = readingRuleApplicationMapper.insertOrUpdateBatch(applications);
             if (affectedRows <= 0) {
                 throw new BusinessException(10400, "设置阅读规范应用记录失败");
+            }
+        } else {
+            // 如果breakingSentenceId为空，则type=1（任务级），from_id为taskId
+            if (request.getIsOpen()) {
+                // 如果isOpen为true，删除记录（如果存在）
+                // 删除操作无论记录是否存在都会成功，所以不需要检查返回值
+                readingRuleApplicationMapper.deleteByRuleIdAndFromIdAndType(
+                        request.getRuleId(),
+                        request.getTaskId(),
+                        ReadingRuleApplicationType.Type.TASK
+                );
+            } else {
+                // 如果isOpen为false，使用插入或更新逻辑
+                List<ReadingRuleApplication> applications = new ArrayList<>();
+                ReadingRuleApplication application = new ReadingRuleApplication();
+                application.setRuleId(request.getRuleId());
+                application.setFromId(request.getTaskId()); // from_id为taskId
+                application.setType(ReadingRuleApplicationType.Type.TASK); // type = 1（任务级）
+                application.setIsOpen(false);
+                applications.add(application);
+
+                int affectedRows = readingRuleApplicationMapper.insertOrUpdateBatch(applications);
+                if (affectedRows <= 0) {
+                    throw new BusinessException(10400, "设置阅读规范应用记录失败");
+                }
             }
         }
 
@@ -198,38 +212,32 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
         int size = (pageSize == null || pageSize < 1) ? 20 : pageSize;
         int offset = (currentPage - 1) * size;
 
-        // 查询总数
-        long total = readingRuleMapper.count(taskId, ruleType);
+        // 查询总数（有taskId时，忽略taskId筛选，返回整个reading_rules表，但支持ruleType筛选）
+        // 注意：taskId参数在count和selectPage中会被忽略，因为reading_rules表没有taskId字段
+        long total = readingRuleMapper.count(null, ruleType);
 
-        // 查询分页数据
+        // 查询分页数据（有taskId时，忽略taskId筛选，返回整个reading_rules表，但支持ruleType筛选）
         List<ReadingRule> rules;
         if (total == 0) {
             rules = Collections.emptyList();
         } else {
-            rules = readingRuleMapper.selectPage(taskId, ruleType, offset, size);
+            rules = readingRuleMapper.selectPage(null, ruleType, offset, size);
         }
 
-        // 查询isOpen状态（如果提供了taskId，从数据库读取）
-        Map<Long, Boolean> ruleIsOpenMap = Collections.emptyMap();
+        // 查询isOpen状态
+        // 有taskId时：根据reading_rule_applications表的记录判断，有记录表示关闭，没记录表示打开
+        // 没有taskId时：默认所有isOpen为true
+        Set<Long> closedRuleIds = Collections.emptySet();
         if (taskId != null) {
+            // 查询该taskId下所有有记录的rule_id（不管is_open值是什么，有记录就表示关闭）
             List<Map<String, Object>> ruleIsOpenList = readingRuleApplicationMapper.selectRuleIdsWithIsOpenByTaskId(taskId);
-            ruleIsOpenMap = ruleIsOpenList.stream()
-                    .collect(Collectors.toMap(
-                            map -> ((Number) map.get("rule_id")).longValue(),
-                            map -> {
-                                Object isOpen = map.get("is_open");
-                                if (isOpen instanceof Boolean) {
-                                    return (Boolean) isOpen;
-                                } else if (isOpen instanceof Number) {
-                                    return ((Number) isOpen).intValue() == 1;
-                                }
-                                return false;
-                            }
-                    ));
+            closedRuleIds = ruleIsOpenList.stream()
+                    .map(map -> ((Number) map.get("rule_id")).longValue())
+                    .collect(Collectors.toSet());
         }
 
         // 转换为DTO
-        final Map<Long, Boolean> finalRuleIsOpenMap = ruleIsOpenMap;
+        final Set<Long> finalClosedRuleIds = closedRuleIds;
         List<ReadingRuleListItemDTO> list = rules.stream()
                 .map(rule -> {
                     ReadingRuleListItemDTO dto = new ReadingRuleListItemDTO();
@@ -237,13 +245,13 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
                     dto.setPattern(rule.getPattern());
                     dto.setRuleType(rule.getRuleType());
                     dto.setRuleValue(rule.getRuleValue());
-                    // 从数据库读取isOpen状态
+                    // 判断isOpen状态
                     if (taskId != null) {
-                        Boolean isOpen = finalRuleIsOpenMap.get(rule.getRuleId());
-                        dto.setIsOpen(isOpen != null && isOpen); // 如果不存在记录，则为false
+                        // 有taskId时：有记录表示关闭（isOpen=false），没记录表示打开（isOpen=true）
+                        dto.setIsOpen(!finalClosedRuleIds.contains(rule.getRuleId()));
                     } else {
-                        // 如果taskId为null，isOpen默认为false（因为无法判断）
-                        dto.setIsOpen(false);
+                        // 没有taskId时：默认所有isOpen为true
+                        dto.setIsOpen(true);
                     }
                     return dto;
                 })
@@ -270,22 +278,6 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
         // 获取所有阅读规范
         List<ReadingRule> rules = readingRuleMapper.selectList();
         
-        // 从数据库获取所有已应用规则的isOpen状态
-        List<Map<String, Object>> ruleIsOpenList = readingRuleApplicationMapper.selectAllRuleIdsWithIsOpen();
-        Map<Long, Boolean> ruleIsOpenMap = ruleIsOpenList.stream()
-                .collect(Collectors.toMap(
-                        map -> ((Number) map.get("rule_id")).longValue(),
-                        map -> {
-                            Object isOpen = map.get("is_open");
-                            if (isOpen instanceof Boolean) {
-                                return (Boolean) isOpen;
-                            } else if (isOpen instanceof Number) {
-                                return ((Number) isOpen).intValue() == 1;
-                            }
-                            return false;
-                        }
-                ));
-        
         // 遍历所有规则，匹配文本
         List<MatchingFieldDTO> fieldList = new ArrayList<>();
         for (ReadingRule rule : rules) {
@@ -306,9 +298,6 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
                 field.setRuleId(rule.getRuleId());
                 field.setLocation(index);
                 field.setPattern(pattern);
-                // 从数据库读取isOpen状态
-                Boolean isOpen = ruleIsOpenMap.get(rule.getRuleId());
-                field.setIsOpen(isOpen == null ? true : isOpen); // 如果不存在记录，则为true
                 fieldList.add(field);
                 
                 // 移动到下一个可能的位置

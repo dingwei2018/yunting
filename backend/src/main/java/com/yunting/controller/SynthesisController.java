@@ -96,6 +96,8 @@ public class SynthesisController {
     }
 
     /**
+     * @ignore
+     *
      * 华为云TTS回调接口
      * 接收华为云TTS异步任务的回调通知
      * 将回调请求发送到RocketMQ消息队列，由消费者异步处理

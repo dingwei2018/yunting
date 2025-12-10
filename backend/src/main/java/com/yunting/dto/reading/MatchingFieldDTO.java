@@ -16,10 +16,6 @@ public class MatchingFieldDTO {
      * 字段
      */
     private String pattern;
-    /**
-     * 是否开启
-     */
-    private Boolean isOpen;
 
     public Long getRuleId() {
         return ruleId;
@@ -43,14 +39,6 @@ public class MatchingFieldDTO {
 
     public void setPattern(String pattern) {
         this.pattern = pattern;
-    }
-
-    public Boolean getIsOpen() {
-        return isOpen;
-    }
-
-    public void setIsOpen(Boolean isOpen) {
-        this.isOpen = isOpen;
     }
 }
 

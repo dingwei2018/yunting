@@ -21,6 +21,13 @@
         ))
     </delete>
 
+    <delete id="deleteByRuleIdAndFromIdAndType">
+        DELETE FROM reading_rule_applications
+        WHERE rule_id = #{ruleId}
+        AND from_id = #{fromId}
+        AND type = #{type}
+    </delete>
+
     <insert id="insertBatch" parameterType="java.util.List">
         INSERT INTO reading_rule_applications (rule_id, from_id, type, is_open, created_at)
         VALUES

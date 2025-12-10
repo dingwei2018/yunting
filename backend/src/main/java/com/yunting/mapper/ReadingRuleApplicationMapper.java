@@ -31,6 +31,16 @@ public interface ReadingRuleApplicationMapper {
      */
     int deleteByRuleIdAndTaskId(@Param("ruleId") Long ruleId, @Param("taskId") Long taskId);
 
+    /**
+     * 根据规则ID、来源ID和类型精确删除应用记录
+     *
+     * @param ruleId 规则ID
+     * @param fromId 来源ID（taskId或breakingSentenceId）
+     * @param type 类型（1-任务级，2-断句级）
+     * @return 删除的记录数
+     */
+    int deleteByRuleIdAndFromIdAndType(@Param("ruleId") Long ruleId, @Param("fromId") Long fromId, @Param("type") Integer type);
+
     List<Long> selectRuleIdsByTaskId(@Param("taskId") Long taskId);
 
     /**

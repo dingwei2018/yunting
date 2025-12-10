@@ -12,28 +12,36 @@ public final class ResponseUtil {
     private static final int DEFAULT_ERROR_CODE = 10500;
 
     private static final Map<String, Object> EMPTY_DATA = new LinkedHashMap<>();
+    private static final String EMPTY_STRING = "";
 
     private ResponseUtil() {
     }
 
     public static <T> ApiResponse<T> success() {
-        return success(null);
+        // 返回空字符串而不是 null
+        return success((T) EMPTY_STRING);
     }
 
     public static <T> ApiResponse<T> success(T data) {
-        return ApiResponse.of(SUCCESS_CODE, "success", data);
+        // 如果 data 为 null，使用空字符串作为默认值
+        T safeData = data != null ? data : (T) EMPTY_STRING;
+        return ApiResponse.of(SUCCESS_CODE, "success", safeData);
     }
 
     public static <T> ApiResponse<T> success(String message, T data) {
-        return ApiResponse.of(SUCCESS_CODE, message, data);
+        // 如果 data 为 null，使用空字符串作为默认值
+        T safeData = data != null ? data : (T) EMPTY_STRING;
+        return ApiResponse.of(SUCCESS_CODE, message, safeData);
     }
 
     public static <T> ApiResponse<T> error(String message) {
-        return ApiResponse.of(DEFAULT_ERROR_CODE, message, null);
+        // 错误响应也返回空字符串而不是 null
+        return ApiResponse.of(DEFAULT_ERROR_CODE, message, (T) EMPTY_STRING);
     }
 
     public static <T> ApiResponse<T> error(int code, String message) {
-        return ApiResponse.of(code, message, null);
+        // 错误响应也返回空字符串而不是 null
+        return ApiResponse.of(code, message, (T) EMPTY_STRING);
     }
 
     /**

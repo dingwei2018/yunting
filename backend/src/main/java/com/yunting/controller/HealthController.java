@@ -17,6 +17,8 @@ import java.util.Map;
 public class HealthController {
 
     /**
+     * @ignore
+     *
      * 健康检查
      * 检查服务运行状态
      *

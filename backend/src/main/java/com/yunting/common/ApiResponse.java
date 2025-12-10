@@ -20,7 +20,8 @@ public class ApiResponse<T> implements Serializable {
     private ApiResponse(int code, String message, T data) {
         this.code = code;
         this.message = message;
-        this.data = data;
+        // 确保 data 不为 null，默认为空字符串
+        this.data = data != null ? data : getDefaultData();
         this.timestamp = Instant.now().toEpochMilli();
     }
 
@@ -37,7 +38,14 @@ public class ApiResponse<T> implements Serializable {
     }
 
     public T getData() {
-        return data;
+        // 双重保护：确保返回的 data 不为 null
+        return data != null ? data : getDefaultData();
+    }
+
+    @SuppressWarnings("unchecked")
+    private T getDefaultData() {
+        // 返回空字符串作为默认值
+        return (T) "";
     }
 
     public long getTimestamp() {
