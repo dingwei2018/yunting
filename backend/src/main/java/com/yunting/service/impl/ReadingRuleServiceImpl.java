@@ -1,6 +1,7 @@
 package com.yunting.service.impl;
 
 import com.yunting.constant.ReadingRuleApplicationType;
+import com.yunting.constant.ReadingRuleType;
 import com.yunting.dto.reading.MatchingFieldDTO;
 import com.yunting.dto.reading.MatchingFieldListResponseDTO;
 import com.yunting.dto.reading.ReadingRuleApplyResponseDTO;
@@ -143,8 +144,8 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
                 throw new BusinessException(10404, "任务暂无断句");
             }
 
-            // 先删除该规则在该任务下的所有应用记录
-            readingRuleApplicationMapper.deleteByRuleId(request.getRuleId());
+            // 先删除该规则在该任务下的所有应用记录（只删除当前任务下的，不影响其他任务）
+            readingRuleApplicationMapper.deleteByRuleIdAndTaskId(request.getRuleId(), request.getTaskId());
 
             // 为所有断句创建应用记录
             List<ReadingRuleApplication> applications = sentences.stream()
@@ -161,15 +162,15 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
                 readingRuleApplicationMapper.insertBatch(applications);
             }
         } else {
-            // 如果isOpen为false，删除该规则在该任务下的所有应用记录
-            readingRuleApplicationMapper.deleteByRuleId(request.getRuleId());
+            // 如果isOpen为false，删除该规则在该任务下的所有应用记录（只删除当前任务下的）
+            readingRuleApplicationMapper.deleteByRuleIdAndTaskId(request.getRuleId(), request.getTaskId());
         }
 
         return "设置成功";
     }
 
     @Override
-    public ReadingRuleListPageResponseDTO getReadingRuleList(Long taskId, String ruleType, Integer page, Integer pageSize) {
+    public ReadingRuleListPageResponseDTO getReadingRuleList(Long taskId, Integer ruleType, Integer page, Integer pageSize) {
         // 参数验证和默认值处理
         int currentPage = (page == null || page < 1) ? 1 : page;
         int size = (pageSize == null || pageSize < 1) ? 20 : pageSize;
@@ -244,16 +245,24 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
                 continue;
             }
 
-            // 使用字符串匹配查找pattern在text中的位置
-            int index = text.indexOf(pattern);
-            if (index >= 0) {
+            // 查找所有匹配位置（支持多个匹配）
+            int startIndex = 0;
+            while (true) {
+                int index = text.indexOf(pattern, startIndex);
+                if (index < 0) {
+                    break;
+                }
+                
                 MatchingFieldDTO field = new MatchingFieldDTO();
                 field.setRuleId(rule.getRuleId());
                 field.setLocation(index);
                 field.setPattern(pattern);
-                // 判断isOpen：检查该规则是否有应用记录
+                // 判断isOpen：检查该规则是否有应用记录（在任何任务下）
                 field.setIsOpen(appliedRuleIds.contains(rule.getRuleId()));
                 fieldList.add(field);
+                
+                // 移动到下一个可能的位置
+                startIndex = index + 1;
             }
         }
 
@@ -266,8 +275,12 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
         if (!StringUtils.hasText(request.getPattern())) {
             throw new BusinessException(10400, "pattern不能为空");
         }
-        if (!StringUtils.hasText(request.getRuleType())) {
-            throw new BusinessException(10400, "rule_type不能为空");
+        if (request.getRuleType() == null) {
+            throw new BusinessException(10400, "ruleType不能为空");
+        }
+        // 使用枚举验证 ruleType 是否有效
+        if (!ReadingRuleType.isValid(request.getRuleType())) {
+            throw new BusinessException(10400, "ruleType必须是1、2或3");
         }
         if (!StringUtils.hasText(request.getRuleValue())) {
             throw new BusinessException(10400, "rule_value不能为空");
