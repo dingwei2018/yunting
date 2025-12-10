@@ -32,15 +32,23 @@ const loadVoiceList = async () => {
     const response = await getVoiceList()
     console.log('音色列表响应数据:', response)
     // request.js 的响应拦截器已经返回了 res.data，所以 response 就是 data 对象
-    if (response && response.list) {
+    // 如果 response 本身就是数组，直接使用
+    if (Array.isArray(response)) {
+      globalVoiceList.value = response
+      console.log('音色列表加载成功，共', globalVoiceList.value.length, '个音色')
+    } else if (response && response.list && Array.isArray(response.list)) {
       globalVoiceList.value = response.list
       console.log('音色列表加载成功，共', globalVoiceList.value.length, '个音色')
     } else {
       console.warn('音色列表数据格式异常:', response)
+      // 如果数据格式异常，使用空数组，避免后续错误
+      globalVoiceList.value = []
     }
   } catch (error) {
     console.error('获取音色列表失败:', error)
-    ElMessage.error('获取音色列表失败')
+    ElMessage.error('获取音色列表失败: ' + (error.message || '未知错误'))
+    // 发生错误时使用空数组，避免后续错误
+    globalVoiceList.value = []
   }
 }
 

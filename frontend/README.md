@@ -60,17 +60,65 @@ frontend/
 
 详细开发说明请查看 [开发说明文档](./开发说明文档.md)
 
-## API / Mock 配置
+## 环境配置
 
-在 `.env` 文件中配置：
+项目支持多环境配置，通过环境变量文件管理不同环境的接口地址：
+
+### 环境文件说明
+
+- `.env` - 默认配置（本地开发）
+- `.env.local` - 本地开发配置（会被 git 忽略，优先级最高）
+- `.env.development` - 开发环境配置
+- `.env.production` - 生产环境配置
+
+### 当前配置
+
+**本地环境** (`.env.local`):
+- 接口地址: `http://localhost:8080`
+- 使用相对路径 `/api/v1`，通过 Vite 代理转发
+
+**开发环境** (`.env.development`):
+- 接口地址: `http://123.60.64.142:8080/api/v1`
+- 使用完整 URL，直接请求
+
+**生产环境** (`.env.production`):
+- 接口地址: 暂未配置（后续添加）
+
+### 使用方法
+
+**本地开发**（默认使用 `.env.local`）:
+```bash
+npm run dev
+# 或
+npm run dev:local
+```
+
+**开发环境**:
+```bash
+npm run dev:development
+```
+
+**构建开发环境**:
+```bash
+npm run build:development
+```
+
+**构建生产环境**:
+```bash
+npm run build:production
+```
+
+### API / Mock 配置
+
+在对应的环境文件中配置：
 
 ```
-VITE_API_BASE_URL=/api/v1
+VITE_API_BASE_URL=/api/v1  # 或完整 URL
 VITE_USE_MOCK=true
 ```
 
 - `VITE_USE_MOCK=true` 时，前端会使用内置 mock 数据，接口不可用时也能预览完整交互
 - 设置为 `false` 即可切换到真实后端 API
 
-开发环境使用 Vite 代理，生产环境需要配置 CORS。
+**注意**: `.env.local` 文件会被 git 忽略，适合存放个人本地配置。如果需要使用开发环境配置，可以临时重命名或删除 `.env.local` 文件。
 

@@ -420,52 +420,37 @@ const updateReadingRuleMarkers = () => {
     return
   }
 
-  const plainText = getPlainTextBetween(0, editor.value.state.doc.content.size)
+  const plainText = getPlainTextWithoutNewlinesBetween(0, editor.value.state.doc.content.size)
   
   const markers = props.readingRules.map((rule) => {
     const pattern = rule.pattern || ''
     if (!pattern) return null
     
+    // 使用传入的 offset 和 length，如果不存在则查找
+    let patternIndex = rule.offset
+    let patternLength = rule.length || pattern.length
+    
+    if (patternIndex === undefined || patternIndex === null) {
+      // 如果没有提供 offset，则在纯文本中查找匹配位置
+      patternIndex = plainText.indexOf(pattern)
+      if (patternIndex === -1) return null
+    }
+    
+    // 将纯文本位置转换为文档位置
     const range = resolveDocRange({
-      offset: 0,
-      length: plainText.length
+      offset: patternIndex,
+      length: patternLength
     })
     
     if (!range) return null
     
-    // 在纯文本中查找匹配的位置
-    const patternIndex = plainText.indexOf(pattern)
-    if (patternIndex === -1) return null
-    
-    // 计算文档中的位置
-    let docFrom = range.from
-    let docTo = range.to
-    
-    // 简化处理：如果匹配在文本开头，直接使用范围
-    if (patternIndex === 0) {
-      // 需要找到 pattern 在文档中的实际位置
-      const beforeText = getPlainTextBetween(0, docFrom)
-      const actualFrom = beforeText.length
-      const actualTo = actualFrom + pattern.length
-      
-      // 重新计算文档位置
-      const actualRange = resolveDocRange({
-        offset: actualFrom,
-        length: pattern.length
-      })
-      
-      if (!actualRange) return null
-      
-      return {
-        ruleId: rule.ruleId || rule.rule_id || '',
-        pattern: pattern,
-        from: actualRange.from,
-        to: actualRange.to,
-        applied: rule.applied !== false // 默认为 true，除非明确设置为 false
-      }
+    return {
+      ruleId: rule.ruleId || rule.rule_id || '',
+      pattern: pattern,
+      from: range.from,
+      to: range.to,
+      applied: rule.applied !== false // 默认为 true，除非明确设置为 false
     }
-    
-    return null
   }).filter(Boolean)
 
   editor.value.chain().setReadingRuleMarkers(markers).run()
@@ -902,21 +887,70 @@ const resolvePolyphonicTarget = (event) => {
   return el?.closest?.('[data-poly-id]') || null
 }
 
+const resolveReadingRuleTarget = (event) => {
+  let el = event.target
+  if (typeof Node !== 'undefined' && el?.nodeType === Node.TEXT_NODE) {
+    el = el.parentElement
+  }
+  return el?.closest?.('.reading-rule-marker') || null
+}
+
 let hoverMarkerId = ''
+let hoverReadingRuleId = ''
 let domRef = null
 
 const handleMouseMove = (event) => {
+  // 优先处理阅读规则标记
+  const readingRuleTarget = resolveReadingRuleTarget(event)
+  if (readingRuleTarget) {
+    const ruleId = readingRuleTarget.getAttribute('data-rule-id')
+    const pattern = readingRuleTarget.getAttribute('data-rule-pattern')
+    const applied = readingRuleTarget.getAttribute('data-rule-applied') === 'true'
+    
+    if (ruleId && hoverReadingRuleId !== ruleId) {
+      hoverReadingRuleId = ruleId
+      // 清除多音字悬停状态
+      if (hoverMarkerId) {
+        hoverMarkerId = ''
+        emit('polyphonicHover', null)
+      }
+      
+      const rect = readingRuleTarget.getBoundingClientRect()
+      emit('readingRuleHover', {
+        ruleId,
+        pattern,
+        applied,
+        position: {
+          top: rect.bottom + 4,
+          left: rect.left,
+          right: rect.right
+        }
+      })
+    }
+    return
+  }
+  
+  // 处理多音字标记
   const target = resolvePolyphonicTarget(event)
   if (!target) {
     if (hoverMarkerId) {
       hoverMarkerId = ''
       emit('polyphonicHover', null)
     }
+    if (hoverReadingRuleId) {
+      hoverReadingRuleId = ''
+      emit('readingRuleHover', null)
+    }
     return
   }
   const markerId = target.getAttribute('data-poly-id')
   if (!markerId || hoverMarkerId === markerId) return
   hoverMarkerId = markerId
+  // 清除阅读规则悬停状态
+  if (hoverReadingRuleId) {
+    hoverReadingRuleId = ''
+    emit('readingRuleHover', null)
+  }
   const marker = markerMap.value.get(markerId)
   if (!marker) return
   const rect = target.getBoundingClientRect()
@@ -935,6 +969,10 @@ const handleMouseLeave = () => {
   if (hoverMarkerId) {
     hoverMarkerId = ''
     emit('polyphonicHover', null)
+  }
+  if (hoverReadingRuleId) {
+    hoverReadingRuleId = ''
+    emit('readingRuleHover', null)
   }
 }
 
