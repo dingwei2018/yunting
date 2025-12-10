@@ -1,0 +1,177 @@
+package com.yunting.service.impl;
+
+import com.yunting.dto.synthesis.TtsSynthesisRequest;
+import com.yunting.mapper.ReadingRuleApplicationMapper;
+import com.yunting.model.ReadingRule;
+import com.yunting.service.HuaweiCloudVocabularyService;
+import com.yunting.service.ReadingRuleAggregationService;
+import com.yunting.service.TtsSynthesisCoordinator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+/**
+ * TTS合成协调器实现
+ */
+@Service
+public class TtsSynthesisCoordinatorImpl implements TtsSynthesisCoordinator {
+
+    private static final Logger logger = LoggerFactory.getLogger(TtsSynthesisCoordinatorImpl.class);
+
+    private final ReadingRuleAggregationService readingRuleAggregationService;
+    private final HuaweiCloudVocabularyService huaweiCloudVocabularyService;
+    private final ReadingRuleApplicationMapper readingRuleApplicationMapper;
+
+    @Value("${huaweicloud.vocabulary.update.timeout:30}")
+    private int vocabularyUpdateTimeout;
+
+    @Value("${tts.wait.processing.tasks.timeout:30}")
+    private int waitProcessingTasksTimeout;
+
+    @Value("${tts.wait.processing.tasks.poll.interval:1}")
+    private int waitProcessingTasksPollInterval;
+
+    public TtsSynthesisCoordinatorImpl(ReadingRuleAggregationService readingRuleAggregationService,
+                                      HuaweiCloudVocabularyService huaweiCloudVocabularyService,
+                                      ReadingRuleApplicationMapper readingRuleApplicationMapper) {
+        this.readingRuleAggregationService = readingRuleAggregationService;
+        this.huaweiCloudVocabularyService = huaweiCloudVocabularyService;
+        this.readingRuleApplicationMapper = readingRuleApplicationMapper;
+    }
+
+    @Override
+    public void ensureVocabularyConfigsAndSynthesize(TtsSynthesisRequest request, 
+                                                     Runnable createTtsJobCallback) {
+        Long breakingSentenceId = request.getBreakingSentenceId();
+        logger.info("开始确保阅读规则已同步，breakingSentenceId: {}", breakingSentenceId);
+
+        try {
+            // 1. 汇总断句需要的阅读规则
+            List<ReadingRule> requiredRules = readingRuleAggregationService.aggregateReadingRules(breakingSentenceId);
+            logger.info("汇总断句需要的阅读规则，breakingSentenceId: {}, 规则数量: {}", 
+                    breakingSentenceId, requiredRules.size());
+
+            // 2. 查询华为云上的规则
+            List<HuaweiCloudVocabularyService.VocabularyConfig> cloudConfigs = 
+                    huaweiCloudVocabularyService.listVocabularyConfigs();
+            logger.info("查询华为云上的自定义读法规则，数量: {}", cloudConfigs.size());
+
+            // 3. 对比规则是否一致
+            boolean isConsistent = compareRules(requiredRules, cloudConfigs);
+
+            if (!isConsistent) {
+                logger.info("阅读规则不一致，需要更新，breakingSentenceId: {}", breakingSentenceId);
+                
+                // 4. 等待所有进行中的TTS任务完成
+                boolean allCompleted = waitForProcessingTasks(waitProcessingTasksTimeout);
+                if (!allCompleted) {
+                    logger.warn("等待进行中的TTS任务超时，但继续更新规则，breakingSentenceId: {}", breakingSentenceId);
+                }
+
+                // 5. 更新华为云上的规则
+                try {
+                    huaweiCloudVocabularyService.updateVocabularyConfigs(requiredRules);
+                    logger.info("更新华为云自定义读法规则成功，breakingSentenceId: {}, 规则数量: {}", 
+                            breakingSentenceId, requiredRules.size());
+                } catch (Exception e) {
+                    logger.error("更新华为云自定义读法规则失败，但继续执行合成，breakingSentenceId: {}", 
+                            breakingSentenceId, e);
+                    // 不抛出异常，继续执行合成
+                }
+            } else {
+                logger.info("阅读规则一致，无需更新，breakingSentenceId: {}", breakingSentenceId);
+            }
+
+            // 6. 执行TTS合成
+            createTtsJobCallback.run();
+            logger.info("TTS合成请求已提交，breakingSentenceId: {}", breakingSentenceId);
+
+        } catch (Exception e) {
+            logger.error("确保阅读规则同步失败，但继续执行合成，breakingSentenceId: {}", breakingSentenceId, e);
+            // 不抛出异常，继续执行合成
+            createTtsJobCallback.run();
+        }
+    }
+
+    @Override
+    public boolean waitForProcessingTasks(int maxWaitSeconds) {
+        logger.info("开始等待进行中的TTS任务完成，最大等待时间: {} 秒", maxWaitSeconds);
+
+        long startTime = System.currentTimeMillis();
+        long maxWaitTime = maxWaitSeconds * 1000L;
+
+        while (System.currentTimeMillis() - startTime < maxWaitTime) {
+            int processingCount = readingRuleApplicationMapper.selectProcessingBreakingSentencesCount();
+            
+            if (processingCount == 0) {
+                logger.info("所有进行中的TTS任务已完成");
+                return true;
+            }
+
+            logger.debug("还有 {} 个进行中的TTS任务，继续等待...", processingCount);
+
+            try {
+                Thread.sleep(waitProcessingTasksPollInterval * 1000L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.warn("等待进行中的TTS任务被中断");
+                return false;
+            }
+        }
+
+        int remainingCount = readingRuleApplicationMapper.selectProcessingBreakingSentencesCount();
+        logger.warn("等待进行中的TTS任务超时，仍有 {} 个任务在进行中", remainingCount);
+        return false;
+    }
+
+    /**
+     * 对比规则是否一致
+     * 
+     * @param requiredRules 需要的规则列表
+     * @param cloudConfigs 华为云上的规则列表
+     * @return 是否一致
+     */
+    private boolean compareRules(List<ReadingRule> requiredRules, 
+                                List<HuaweiCloudVocabularyService.VocabularyConfig> cloudConfigs) {
+        // 构建需要的规则Map（pattern -> ruleValue）
+        Map<String, String> requiredRuleMap = requiredRules.stream()
+                .collect(Collectors.toMap(
+                        ReadingRule::getPattern,
+                        ReadingRule::getRuleValue,
+                        (v1, v2) -> v1  // 如果有重复，保留第一个
+                ));
+
+        // 构建华为云上的规则Map（pattern -> ruleValue）
+        Map<String, String> cloudRuleMap = cloudConfigs.stream()
+                .collect(Collectors.toMap(
+                        HuaweiCloudVocabularyService.VocabularyConfig::getPattern,
+                        HuaweiCloudVocabularyService.VocabularyConfig::getRuleValue,
+                        (v1, v2) -> v1  // 如果有重复，保留第一个
+                ));
+
+        // 对比两个Map是否一致
+        if (requiredRuleMap.size() != cloudRuleMap.size()) {
+            logger.debug("规则数量不一致，需要的: {}, 华为云上的: {}", 
+                    requiredRuleMap.size(), cloudRuleMap.size());
+            return false;
+        }
+
+        for (Map.Entry<String, String> entry : requiredRuleMap.entrySet()) {
+            String pattern = entry.getKey();
+            String requiredValue = entry.getValue();
+            String cloudValue = cloudRuleMap.get(pattern);
+
+            if (!Objects.equals(requiredValue, cloudValue)) {
+                logger.debug("规则值不一致，pattern: {}, 需要的: {}, 华为云上的: {}", 
+                        pattern, requiredValue, cloudValue);
+                return false;
+            }
+        }
+
+        return true;
+    }
+}

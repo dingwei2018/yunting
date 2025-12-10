@@ -11,9 +11,8 @@ import com.huaweicloud.sdk.metastudio.v1.model.*;
 import com.huaweicloud.sdk.metastudio.v1.region.MetaStudioRegion;
 import com.yunting.config.RocketMQConfig;
 import com.yunting.dto.synthesis.TtsSynthesisRequest;
-import com.yunting.exception.BusinessException;
 import com.yunting.mapper.BreakingSentenceMapper;
-import com.yunting.model.BreakingSentence;
+import com.yunting.service.TtsSynthesisCoordinator;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.apache.rocketmq.client.apis.ClientConfiguration;
@@ -51,6 +50,7 @@ public class TtsSynthesisConsumer {
     private final BreakingSentenceMapper breakingSentenceMapper;
     private final ObjectMapper objectMapper;
     private final RocketMQConfig rocketMQConfig;
+    private final TtsSynthesisCoordinator ttsSynthesisCoordinator;
     private final BlockingQueue<MessageView> messageQueue = new LinkedBlockingQueue<>();
     private final ScheduledExecutorService rateLimiterExecutor = Executors.newScheduledThreadPool(1);
     private volatile boolean running = false;
@@ -76,10 +76,12 @@ public class TtsSynthesisConsumer {
     
     public TtsSynthesisConsumer(BreakingSentenceMapper breakingSentenceMapper,
                                 ObjectMapper objectMapper,
-                                RocketMQConfig rocketMQConfig) {
+                                RocketMQConfig rocketMQConfig,
+                                TtsSynthesisCoordinator ttsSynthesisCoordinator) {
         this.breakingSentenceMapper = breakingSentenceMapper;
         this.objectMapper = objectMapper;
         this.rocketMQConfig = rocketMQConfig;
+        this.ttsSynthesisCoordinator = ttsSynthesisCoordinator;
     }
     
     @PostConstruct
@@ -173,8 +175,10 @@ public class TtsSynthesisConsumer {
             logger.info("处理TTS合成请求，breakingSentenceId: {}, 线程: {}", 
                     request.getBreakingSentenceId(), Thread.currentThread().getName());
             
-            // 调用华为云 API 创建 TTS 任务
-            createTtsJob(request);
+            // 确保阅读规则已同步，然后执行合成
+            ttsSynthesisCoordinator.ensureVocabularyConfigsAndSynthesize(request, () -> {
+                createTtsJobInternal(request);
+            });
             
         } catch (Exception e) {
             logger.error("处理TTS合成请求失败", e);
@@ -182,9 +186,9 @@ public class TtsSynthesisConsumer {
     }
     
     /**
-     * 创建华为云TTS任务
+     * 创建华为云TTS任务（内部方法，由协调器调用）
      */
-    private void createTtsJob(TtsSynthesisRequest request) {
+    private void createTtsJobInternal(TtsSynthesisRequest request) {
         Long breakingSentenceId = request.getBreakingSentenceId();
         String jobId = null;
         

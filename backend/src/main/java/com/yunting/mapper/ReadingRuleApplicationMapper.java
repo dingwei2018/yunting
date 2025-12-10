@@ -68,6 +68,30 @@ public interface ReadingRuleApplicationMapper {
      * @return List<Map>，每个Map包含rule_id和is_open
      */
     List<Map<String, Object>> selectAllRuleIdsWithIsOpen();
+
+    /**
+     * 查询全局规则及任务级关闭记录
+     * 返回全局规则列表，同时标记哪些规则在该任务中被关闭
+     *
+     * @param taskId 任务ID
+     * @return List<Map>，每个Map包含规则信息和task_closed标记
+     */
+    List<Map<String, Object>> selectGlobalRulesWithTaskClosedRules(@Param("taskId") Long taskId);
+
+    /**
+     * 查询断句级规则（已开启的）
+     *
+     * @param breakingSentenceId 断句ID
+     * @return 规则ID列表
+     */
+    List<Long> selectBreakingSentenceRules(@Param("breakingSentenceId") Long breakingSentenceId);
+
+    /**
+     * 查询所有进行中的断句数量（synthesis_status=1）
+     *
+     * @return 进行中的断句数量
+     */
+    int selectProcessingBreakingSentencesCount();
 }
 
 

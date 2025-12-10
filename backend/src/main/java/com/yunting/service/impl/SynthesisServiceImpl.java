@@ -5,48 +5,27 @@ import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.SynthesisResultDTO;
 import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
 import com.yunting.dto.synthesis.TtsSynthesisRequest;
-import com.yunting.exception.BusinessException;
+import com.yunting.dto.synthesis.TtsCallbackRequest;
 import com.yunting.mapper.BreakingSentenceMapper;
-import com.yunting.mapper.PauseSettingMapper;
-import com.yunting.mapper.PolyphonicSettingMapper;
-import com.yunting.mapper.ProsodySettingMapper;
-import com.yunting.mapper.ReadingRuleApplicationMapper;
 import com.yunting.mapper.SynthesisSettingMapper;
 import com.yunting.mapper.TaskMapper;
 import com.yunting.model.BreakingSentence;
-import com.yunting.model.PauseSetting;
-import com.yunting.model.PolyphonicSetting;
-import com.yunting.model.ProsodySetting;
-import com.yunting.model.ReadingRuleApplication;
 import com.yunting.model.SynthesisSetting;
 import com.yunting.model.Task;
 import com.yunting.service.SynthesisService;
-import com.yunting.service.ObsStorageService;
+import com.yunting.service.SynthesisConfigService;
+import com.yunting.service.SynthesisStatusService;
+import com.yunting.service.TtsCallbackHandlerService;
 import com.yunting.service.RocketMQTtsSynthesisService;
-import com.yunting.util.SynthesisStatusUtil;
 import com.yunting.util.ValidationUtil;
-import com.yunting.constant.ReadingRuleApplicationType;
 import com.yunting.constant.SynthesisStatus;
-import com.yunting.constant.TaskStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.net.URL;
-import java.net.URLConnection;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
-import com.yunting.dto.synthesis.TtsCallbackRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,62 +40,25 @@ public class SynthesisServiceImpl implements SynthesisService {
     private final BreakingSentenceMapper breakingSentenceMapper;
     private final TaskMapper taskMapper;
     private final SynthesisSettingMapper synthesisSettingMapper;
-    private final PauseSettingMapper pauseSettingMapper;
-    private final PolyphonicSettingMapper polyphonicSettingMapper;
-    private final ProsodySettingMapper prosodySettingMapper;
-    private final ReadingRuleApplicationMapper readingRuleApplicationMapper;
-    private final ObsStorageService obsStorageService;
     private final RocketMQTtsSynthesisService rocketMQTtsSynthesisService;
-
-    // 从 application.properties 注入配置参数
-    // 使用 @Value 注解，格式：${配置键名:默认值}
-    // 如果配置文件中没有该键，则使用默认值；如果没有默认值且配置不存在，会抛出异常
-    
-    @Value("${huaweicloud.ak:}")
-    private String huaweiCloudAk;
-
-    @Value("${huaweicloud.sk:}")
-    private String huaweiCloudSk;
-
-    @Value("${huaweicloud.region:cn-north-4}")
-    private String huaweiCloudRegion;
-
-    @Value("${huaweicloud.project-id:}")
-    private String huaweiCloudProjectId;
-
-    @Value("${huaweicloud.obs.endpoint:}")
-    private String huaweiCloudObsEndpoint;
-
-    @Value("${huaweicloud.obs.bucket:}")
-    private String huaweiCloudObsBucket;
-
-    @Value("${huaweicloud.obs.prefix:audio/}")
-    private String huaweiCloudObsPrefix;
-
-    @Value("${file.storage.local.path:temp/audio}")
-    private String localStoragePath;
-
-    @Value("${app.callback.url:}")
-    private String callbackUrl;
+    private final SynthesisConfigService synthesisConfigService;
+    private final SynthesisStatusService synthesisStatusService;
+    private final TtsCallbackHandlerService ttsCallbackHandlerService;
 
     public SynthesisServiceImpl(BreakingSentenceMapper breakingSentenceMapper,
                                 TaskMapper taskMapper,
                                 SynthesisSettingMapper synthesisSettingMapper,
-                                PauseSettingMapper pauseSettingMapper,
-                                PolyphonicSettingMapper polyphonicSettingMapper,
-                                ProsodySettingMapper prosodySettingMapper,
-                                ReadingRuleApplicationMapper readingRuleApplicationMapper,
-                                ObsStorageService obsStorageService,
-                                RocketMQTtsSynthesisService rocketMQTtsSynthesisService) {
+                                RocketMQTtsSynthesisService rocketMQTtsSynthesisService,
+                                SynthesisConfigService synthesisConfigService,
+                                SynthesisStatusService synthesisStatusService,
+                                TtsCallbackHandlerService ttsCallbackHandlerService) {
         this.breakingSentenceMapper = breakingSentenceMapper;
         this.taskMapper = taskMapper;
         this.synthesisSettingMapper = synthesisSettingMapper;
-        this.pauseSettingMapper = pauseSettingMapper;
-        this.polyphonicSettingMapper = polyphonicSettingMapper;
-        this.prosodySettingMapper = prosodySettingMapper;
-        this.readingRuleApplicationMapper = readingRuleApplicationMapper;
-        this.obsStorageService = obsStorageService;
         this.rocketMQTtsSynthesisService = rocketMQTtsSynthesisService;
+        this.synthesisConfigService = synthesisConfigService;
+        this.synthesisStatusService = synthesisStatusService;
+        this.ttsCallbackHandlerService = ttsCallbackHandlerService;
     }
 
     @Override
@@ -360,606 +302,28 @@ public class SynthesisServiceImpl implements SynthesisService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void setConfig(SynthesisSetConfigRequest request) {
-        ValidationUtil.notNull(request, "请求参数不能为空");
-        ValidationUtil.notNull(request.getTaskId(), "taskId不能为空");
-        ValidationUtil.notNull(request.getOriginalSentenceId(), "originalSentenceId不能为空");
-        ValidationUtil.notEmpty(request.getBreakingSentenceList(), "breakingSentenceList不能为空");
-
-        // 验证任务是否存在
-        Task task = taskMapper.selectById(request.getTaskId());
-        if (task == null) {
-            throw new BusinessException(10404, "任务不存在");
-        }
-
-        // 处理每个断句的配置
-        for (SynthesisSetConfigRequest.BreakingSentenceConfig config : request.getBreakingSentenceList()) {
-            ValidationUtil.notNull(config.getBreakingSentenceId(), "breakingSentenceId不能为空");
-            
-            Long breakingSentenceId = config.getBreakingSentenceId();
-            boolean isNew = breakingSentenceId < 0;
-
-            // 如果是新增，需要先创建断句记录
-            if (isNew) {
-                // 获取该任务下当前最大的sequence
-                List<BreakingSentence> existingSentences = breakingSentenceMapper.selectByTaskId(request.getTaskId());
-                int maxSequence = existingSentences.stream()
-                        .mapToInt(BreakingSentence::getSequence)
-                        .max()
-                        .orElse(0);
-                
-                // 创建新的断句
-                BreakingSentence newSentence = new BreakingSentence();
-                newSentence.setTaskId(request.getTaskId());
-                newSentence.setOriginalSentenceId(request.getOriginalSentenceId());
-                newSentence.setContent(config.getContent());
-                newSentence.setCharCount(calculateCharCount(config.getContent()));
-                // 如果请求中提供了sequence，使用请求的值；否则使用最大值+1
-                newSentence.setSequence(config.getSequence() != null ? config.getSequence() : maxSequence + 1);
-                newSentence.setSynthesisStatus(SynthesisStatus.Status.PENDING);
-                
-                breakingSentenceMapper.insert(newSentence);
-                breakingSentenceId = newSentence.getBreakingSentenceId();
-            } else {
-                // 验证断句是否存在
-                BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
-                if (sentence == null) {
-                    throw new BusinessException(10404, "断句不存在: " + breakingSentenceId);
-                }
-                
-                // 验证断句是否属于该任务
-                if (!sentence.getTaskId().equals(request.getTaskId())) {
-                    throw new BusinessException(10400, "断句不属于该任务");
-                }
-            }
-
-            // 1. 更新content到breaking_sentences表
-            if (StringUtils.hasText(config.getContent())) {
-                int charCount = calculateCharCount(config.getContent());
-                breakingSentenceMapper.updateContent(breakingSentenceId, config.getContent(), charCount);
-            }
-
-            // 1.1 更新sequence到breaking_sentences表（如果提供了sequence字段）
-            if (config.getSequence() != null) {
-                breakingSentenceMapper.updateSequence(breakingSentenceId, config.getSequence());
-            }
-
-            // 2. 更新volume、voiceId、speed到synthesis_settings表
-            if (config.getVolume() != null || StringUtils.hasText(config.getVoiceId()) || config.getSpeed() != null) {
-                SynthesisSetting setting = synthesisSettingMapper.selectByBreakingSentenceId(breakingSentenceId);
-                if (setting == null) {
-                    setting = new SynthesisSetting();
-                    setting.setBreakingSentenceId(breakingSentenceId);
-                    // 设置默认值，避免数据库 NOT NULL 约束错误
-                    setting.setSpeechRate(0);
-                    setting.setVolume(0);
-                    setting.setPitch(0);
-                }
-                
-                if (config.getVolume() != null) {
-                    setting.setVolume(config.getVolume());
-                }
-                if (StringUtils.hasText(config.getVoiceId())) {
-                    setting.setVoiceId(config.getVoiceId());
-                }
-                if (config.getSpeed() != null) {
-                    setting.setSpeechRate(config.getSpeed());
-                }
-                
-                synthesisSettingMapper.upsert(setting);
-            }
-
-            // 3. 更新breakList和silenceList到pause_settings表（先删除旧的，再插入新的）
-            pauseSettingMapper.deleteByBreakingSentenceId(breakingSentenceId);
-            List<PauseSetting> pauseSettings = new ArrayList<>();
-            
-            // 处理 breakList（type=1，停顿）
-            if (!CollectionUtils.isEmpty(config.getBreakList())) {
-                for (SynthesisSetConfigRequest.BreakConfig breakConfig : config.getBreakList()) {
-                    PauseSetting pauseSetting = new PauseSetting();
-                    pauseSetting.setBreakingSentenceId(breakingSentenceId);
-                    pauseSetting.setPosition(breakConfig.getLocation());
-                    pauseSetting.setDuration(breakConfig.getDuration());
-                    pauseSetting.setType(1); // 1表示停顿
-                    pauseSettings.add(pauseSetting);
-                }
-            }
-            
-            // 处理 silenceList（type=2，静音）
-            if (!CollectionUtils.isEmpty(config.getSilenceList())) {
-                for (SynthesisSetConfigRequest.SilenceConfig silenceConfig : config.getSilenceList()) {
-                    PauseSetting pauseSetting = new PauseSetting();
-                    pauseSetting.setBreakingSentenceId(breakingSentenceId);
-                    pauseSetting.setPosition(silenceConfig.getLocation());
-                    pauseSetting.setDuration(silenceConfig.getDuration());
-                    pauseSetting.setType(2); // 2表示静音
-                    pauseSettings.add(pauseSetting);
-                }
-            }
-            
-            if (!pauseSettings.isEmpty()) {
-                pauseSettingMapper.insertBatch(pauseSettings);
-            }
-
-            // 4. 更新phonemeList到polyphonic_settings表（先删除旧的，再插入新的）
-            polyphonicSettingMapper.deleteByBreakingSentenceId(breakingSentenceId);
-            if (!CollectionUtils.isEmpty(config.getPhonemeList())) {
-                // 获取当前断句内容以提取字符
-                BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
-                String content = sentence != null ? sentence.getContent() : config.getContent();
-                
-                if (StringUtils.hasText(content)) {
-                    List<PolyphonicSetting> polyphonicSettings = new ArrayList<>();
-                    for (SynthesisSetConfigRequest.PhonemeConfig phonemeConfig : config.getPhonemeList()) {
-                        if (phonemeConfig.getLocation() != null && phonemeConfig.getLocation() >= 0 
-                                && phonemeConfig.getLocation() < content.length()
-                                && StringUtils.hasText(phonemeConfig.getPh())) {
-                            PolyphonicSetting polyphonicSetting = new PolyphonicSetting();
-                            polyphonicSetting.setBreakingSentenceId(breakingSentenceId);
-                            // 从content的location位置提取字符
-                            String word = content.substring(phonemeConfig.getLocation(), 
-                                    Math.min(phonemeConfig.getLocation() + 1, content.length()));
-                            polyphonicSetting.setWord(word);
-                            polyphonicSetting.setPosition(phonemeConfig.getLocation());
-                            polyphonicSetting.setPronunciation(phonemeConfig.getPh());
-                            polyphonicSettings.add(polyphonicSetting);
-                        }
-                    }
-                    if (!polyphonicSettings.isEmpty()) {
-                        polyphonicSettingMapper.insertBatch(polyphonicSettings);
-                    }
-                }
-            }
-
-            // 5. 更新prosodyList到prosody_settings表（先删除旧的，再插入新的）
-            prosodySettingMapper.deleteByBreakingSentenceId(breakingSentenceId);
-            if (!CollectionUtils.isEmpty(config.getProsodyList())) {
-                List<ProsodySetting> prosodySettings = new ArrayList<>();
-                for (SynthesisSetConfigRequest.ProsodyConfig prosodyConfig : config.getProsodyList()) {
-                    ProsodySetting prosodySetting = new ProsodySetting();
-                    prosodySetting.setBreakingSentenceId(breakingSentenceId);
-                    prosodySetting.setBeginPosition(prosodyConfig.getBegin());
-                    prosodySetting.setEndPosition(prosodyConfig.getEnd());
-                    prosodySetting.setRate(prosodyConfig.getRate());
-                    prosodySettings.add(prosodySetting);
-                }
-                if (!prosodySettings.isEmpty()) {
-                    prosodySettingMapper.insertBatch(prosodySettings);
-                }
-            }
-
-            // 5.1 更新readRule到reading_rule_applications表（先删除旧的，再插入新的）
-            readingRuleApplicationMapper.deleteByBreakingSentenceId(breakingSentenceId);
-            if (!CollectionUtils.isEmpty(config.getReadRule())) {
-                List<ReadingRuleApplication> readingRuleApplications = new ArrayList<>();
-                for (SynthesisSetConfigRequest.ReadRuleConfig readRuleConfig : config.getReadRule()) {
-                    // 处理所有规则，只要ruleId不为空就记录
-                    if (readRuleConfig.getRuleId() != null) {
-                        ReadingRuleApplication application = new ReadingRuleApplication();
-                        application.setRuleId(readRuleConfig.getRuleId());
-                        application.setFromId(breakingSentenceId);
-                        application.setType(ReadingRuleApplicationType.Type.BREAKING_SENTENCE);
-                        // 使用前端传入的isOpen值，如果为null则默认为false
-                        application.setIsOpen(readRuleConfig.getIsOpen() != null ? readRuleConfig.getIsOpen() : false);
-                        readingRuleApplications.add(application);
-                    }
-                }
-                if (!readingRuleApplications.isEmpty()) {
-                    readingRuleApplicationMapper.insertBatch(readingRuleApplications);
-                }
-            }
-
-            // 6. 生成 SSML 并更新到 breaking_sentences 表
-            // 获取最终的 content（可能已经更新）
-            BreakingSentence finalSentence = breakingSentenceMapper.selectById(breakingSentenceId);
-            String finalContent = finalSentence != null ? finalSentence.getContent() : config.getContent();
-            
-            if (StringUtils.hasText(finalContent)) {
-                // 创建一个临时的 config 对象，使用最新的 content
-                SynthesisSetConfigRequest.BreakingSentenceConfig ssmlConfig = new SynthesisSetConfigRequest.BreakingSentenceConfig();
-                ssmlConfig.setContent(finalContent);
-                ssmlConfig.setVoiceId(config.getVoiceId());
-                ssmlConfig.setSpeed(config.getSpeed());
-                ssmlConfig.setVolume(config.getVolume());
-                ssmlConfig.setBreakList(config.getBreakList());
-                ssmlConfig.setPhonemeList(config.getPhonemeList());
-                ssmlConfig.setProsodyList(config.getProsodyList());
-                ssmlConfig.setSilenceList(config.getSilenceList());
-                
-                String ssml = com.yunting.util.SsmlRenderer.renderFromConfig(ssmlConfig);
-                if (StringUtils.hasText(ssml)) {
-                    breakingSentenceMapper.updateSsml(breakingSentenceId, ssml);
-                }
-            }
-        }
+        synthesisConfigService.setConfig(request);
     }
-
-    /**
-     * 计算字符数
-     */
-    private int calculateCharCount(String content) {
-        if (content == null) {
-            return 0;
-        }
-        return content.length();
-    }
-
-
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void handleTtsCallback(TtsCallbackRequest callbackRequest) {
-        String jobId = callbackRequest.getJobId();
-        String status = callbackRequest.getStatus();
-        
-        if (!StringUtils.hasText(jobId)) {
-            logger.warn("回调请求中job_id为空，忽略处理");
-            return;
-        }
-
-        // 根据job_id从数据库查找对应的breaking_sentence_id
-        BreakingSentence sentence = breakingSentenceMapper.selectByJobId(jobId);
-        if (sentence == null) {
-            logger.warn("未找到job_id对应的断句，jobId: {}", jobId);
-            return;
-        }
-
-        Long breakingSentenceId = sentence.getBreakingSentenceId();
-        logger.info("处理TTS回调，jobId: {}, status: {}, breakingSentenceId: {}", jobId, status, breakingSentenceId);
-
-        try {
-            if (SynthesisStatus.Callback.FINISHED.equals(status)) {
-                // 任务完成，处理音频文件
-                handleFinishedCallback(callbackRequest, breakingSentenceId);
-            } else if (SynthesisStatus.Callback.ERROR.equals(status)) {
-                // 任务失败
-                handleErrorCallback(callbackRequest, breakingSentenceId);
-            } else if (SynthesisStatus.Callback.WAITING.equals(status)) {
-                // 任务等待中，不需要处理
-                logger.info("TTS任务等待中，jobId: {}", jobId);
-            } else {
-                logger.warn("未知的任务状态: {}, jobId: {}", status, jobId);
-            }
-        } catch (Exception e) {
-            logger.error("处理TTS回调异常，jobId: {}, breakingSentenceId: {}", jobId, breakingSentenceId, e);
-            // 更新状态为失败
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
-        }
-    }
-
-    /**
-     * 处理任务完成的回调
-     */
-    private void handleFinishedCallback(TtsCallbackRequest callbackRequest, Long breakingSentenceId) {
-        String audioDownloadUrl = callbackRequest.getAudioFileDownloadUrl();
-        Integer audioDurationSeconds = callbackRequest.getAudioDuration();
-
-        if (!StringUtils.hasText(audioDownloadUrl)) {
-            logger.warn("音频下载URL为空，jobId: {}, breakingSentenceId: {}", 
-                    callbackRequest.getJobId(), breakingSentenceId);
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
-            // 更新失败后也要检查并更新 task 状态
-            BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
-            if (sentence != null) {
-                updateTaskStatusIfNeeded(sentence.getTaskId());
-            }
-            return;
-        }
-
-        File localFile = null;
-        try {
-            // 1. 生成本地文件路径
-            String fileName = "breaking_" + breakingSentenceId + "_" + System.currentTimeMillis() + ".wav";
-            Path localDir = Paths.get(localStoragePath);
-            
-            // 确保本地存储目录存在
-            if (!Files.exists(localDir)) {
-                Files.createDirectories(localDir);
-                logger.info("创建本地存储目录: {}", localDir.toAbsolutePath());
-            }
-            
-            localFile = localDir.resolve(fileName).toFile();
-
-            // 2. 从下载URL下载文件到本地
-            logger.info("开始从URL下载文件到本地，downloadUrl: {}, localFile: {}", 
-                    audioDownloadUrl, localFile.getAbsolutePath());
-            downloadFileToLocal(audioDownloadUrl, localFile);
-            logger.info("文件下载成功，本地文件: {}, 文件大小: {} bytes", 
-                    localFile.getAbsolutePath(), localFile.length());
-
-            // 3. 生成OBS对象键
-            String objectKey = obsStorageService.buildObjectKey(fileName);
-
-            // 4. 从本地文件上传到OBS
-            logger.info("开始从本地文件上传到OBS，localFile: {}, objectKey: {}", 
-                    localFile.getAbsolutePath(), objectKey);
-            String obsUrl = obsStorageService.uploadFromFile(localFile, objectKey);
-            logger.info("文件上传到OBS成功，OBS URL: {}", obsUrl);
-
-            // 5. 转换音频时长（秒转毫秒）
-            Integer audioDuration = audioDurationSeconds != null ? 
-                    audioDurationSeconds * 1000 : null;
-
-            // 6. 更新数据库
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.COMPLETED, obsUrl, audioDuration);
-            logger.info("TTS任务完成，已更新数据库，breakingSentenceId: {}, audioUrl: {}, duration: {}ms", 
-                    breakingSentenceId, obsUrl, audioDuration);
-
-            // 7. 检查并更新 task 状态
-            BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
-            if (sentence != null) {
-                updateTaskStatusIfNeeded(sentence.getTaskId());
-            }
-
-        } catch (Exception e) {
-            logger.error("处理完成回调异常，breakingSentenceId: {}", breakingSentenceId, e);
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
-            // 更新失败后也要检查并更新 task 状态
-            BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
-            if (sentence != null) {
-                updateTaskStatusIfNeeded(sentence.getTaskId());
-            }
-            throw new BusinessException(10500, "处理音频文件失败: " + e.getMessage());
-        } finally {
-            // 7. 清理临时文件
-            if (localFile != null && localFile.exists()) {
-                try {
-                    boolean deleted = localFile.delete();
-                    if (deleted) {
-                        logger.info("已删除临时文件: {}", localFile.getAbsolutePath());
-                    } else {
-                        logger.warn("删除临时文件失败: {}", localFile.getAbsolutePath());
-                    }
-                } catch (Exception e) {
-                    logger.warn("删除临时文件时发生异常: {}", localFile.getAbsolutePath(), e);
-                }
-            }
-        }
-    }
-
-    /**
-     * 从URL下载文件到本地
-     * 
-     * @param downloadUrl 下载URL
-     * @param localFile 本地文件
-     */
-    private void downloadFileToLocal(String downloadUrl, File localFile) {
-        try {
-            URL url = new URL(downloadUrl);
-            URLConnection connection = url.openConnection();
-            connection.setConnectTimeout(30000); // 30秒连接超时
-            connection.setReadTimeout(300000); // 5分钟读取超时
-            
-            try (InputStream inputStream = connection.getInputStream();
-                 FileOutputStream outputStream = new FileOutputStream(localFile)) {
-                
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                long totalBytes = 0;
-                
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, bytesRead);
-                    totalBytes += bytesRead;
-                }
-                
-                outputStream.flush();
-                logger.info("文件下载完成，总大小: {} bytes", totalBytes);
-            }
-        } catch (Exception e) {
-            logger.error("下载文件失败，URL: {}, localFile: {}", downloadUrl, 
-                    localFile.getAbsolutePath(), e);
-            throw new RuntimeException("下载文件失败: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * 处理任务失败的回调
-     */
-    private void handleErrorCallback(TtsCallbackRequest callbackRequest, Long breakingSentenceId) {
-        logger.error("TTS任务失败，jobId: {}, breakingSentenceId: {}", 
-                callbackRequest.getJobId(), breakingSentenceId);
-        breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
-        
-        // 检查并更新 task 状态
-        BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
-        if (sentence != null) {
-            updateTaskStatusIfNeeded(sentence.getTaskId());
-        }
-    }
-
-    /**
-     * 根据 breaking_sentence 的合成状态更新 task 状态
-     * 规则：
-     * - 如果有 breaking_sentence 合成失败（状态为3），task 状态 = SYNTHESIS_FAILED（语音合成失败）
-     * - 如果有 breaking_sentence 还未完成合成（状态为0或1），task 状态 = SYNTHESIS_PROCESSING（语音合成中）
-     * - 如果全部 breaking_sentence 都已完成合成（状态都为2），task 状态 = SYNTHESIS_SUCCESS（语音合成成功）
-     * 
-     * @param taskId 任务ID
-     */
-    private void updateTaskStatusIfNeeded(Long taskId) {
-        try {
-            // 1. 查询该 task 下所有 breaking_sentence
-            List<BreakingSentence> sentences = breakingSentenceMapper.selectByTaskId(taskId);
-            if (sentences.isEmpty()) {
-                logger.warn("任务下没有断句，taskId: {}", taskId);
-                return;
-            }
-
-            // 2. 统计各状态的数量
-            int total = sentences.size();
-            long completed = sentences.stream()
-                    .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.COMPLETED))
-                    .count();
-            long failed = sentences.stream()
-                    .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.FAILED))
-                    .count();
-            long processing = sentences.stream()
-                    .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PROCESSING))
-                    .count();
-            long pending = sentences.stream()
-                    .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PENDING))
-                    .count();
-
-            // 3. 根据规则判断并更新 task 状态（优先级：失败 > 进行中 > 已完成）
-            Integer newStatus = null;
-            if (failed > 0) {
-                // 如果有失败的断句，task 状态 = SYNTHESIS_FAILED（语音合成失败）
-                newStatus = TaskStatus.Status.SYNTHESIS_FAILED;
-            } else if (processing > 0 || pending > 0) {
-                // 如果有进行中或待处理的断句，task 状态 = SYNTHESIS_PROCESSING（语音合成中）
-                newStatus = TaskStatus.Status.SYNTHESIS_PROCESSING;
-            } else if (completed == total) {
-                // 如果全部完成，task 状态 = SYNTHESIS_SUCCESS（语音合成成功）
-                newStatus = TaskStatus.Status.SYNTHESIS_SUCCESS;
-            }
-
-            // 4. 更新 task 状态
-            if (newStatus != null) {
-                taskMapper.updateStatus(taskId, newStatus);
-                logger.info("更新任务状态，taskId: {}, newStatus: {}, total: {}, completed: {}, failed: {}, processing: {}, pending: {}", 
-                        taskId, newStatus, total, completed, failed, processing, pending);
-            }
-        } catch (Exception e) {
-            logger.error("更新任务状态失败，taskId: {}", taskId, e);
-            // 不抛出异常，避免影响主流程
-        }
+        ttsCallbackHandlerService.handleTtsCallback(callbackRequest);
     }
 
     @Override
     public SynthesisResultDTO getBreakingSentenceStatus(Long breakingSentenceId) {
-        // 参数验证
-        ValidationUtil.notNull(breakingSentenceId, "breakingSentenceId不能为空");
-        
-        // 查询断句信息
-        BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
-        if (sentence == null) {
-            logger.warn("断句不存在，breakingSentenceId: {}", breakingSentenceId);
-            throw new IllegalArgumentException("断句不存在");
-        }
-        
-        // 构建返回结果
-        SynthesisResultDTO result = new SynthesisResultDTO();
-        result.setAudioUrl(sentence.getAudioUrl());
-        result.setAudioDuration(sentence.getAudioDuration());
-        // 如果 synthesisStatus 为 null，默认为 0（未合成）
-        result.setSynthesisStatus(sentence.getSynthesisStatus() != null ? sentence.getSynthesisStatus() : SynthesisStatus.Status.PENDING);
-        
-        return result;
+        return synthesisStatusService.getBreakingSentenceStatus(breakingSentenceId);
     }
 
     @Override
     public OriginalSentenceSynthesisStatusDTO getOriginalSentenceStatus(Long originalSentenceId) {
-        // 参数验证
-        ValidationUtil.notNull(originalSentenceId, "originalSentenceId不能为空");
-        
-        // 查询该拆句下的所有断句
-        List<BreakingSentence> sentences = breakingSentenceMapper.selectByOriginalSentenceId(originalSentenceId);
-        
-        // 构建返回结果
-        OriginalSentenceSynthesisStatusDTO result = new OriginalSentenceSynthesisStatusDTO();
-        
-        int total = sentences.size();
-        long completed = sentences.stream()
-                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.COMPLETED))
-                .count();
-        long processing = sentences.stream()
-                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PROCESSING))
-                .count();
-        long pending = sentences.stream()
-                .filter(s -> s.getSynthesisStatus() == null || 
-                           Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PENDING))
-                .count();
-        
-        // 计算进度（1-100）
-        int progress = total > 0 ? (int) Math.round((double) completed / total * 100) : 0;
-        
-        // 确定整体状态（使用统一工具类方法）
-        Integer status = SynthesisStatusUtil.aggregateSynthesisStatus(sentences);
-        
-        result.setStatus(status);
-        result.setProgress(progress);
-        result.setTotal(total);
-        result.setCompleted((int) completed);
-        result.setPending((int) (processing + pending));
-        
-        // 构建音频URL列表（只包含已完成的断句）
-        List<OriginalSentenceSynthesisStatusDTO.AudioUrlItem> audioUrlList = sentences.stream()
-                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.COMPLETED) 
-                        && StringUtils.hasText(s.getAudioUrl()))
-                .sorted((s1, s2) -> {
-                    int seq1 = s1.getSequence() != null ? s1.getSequence() : 0;
-                    int seq2 = s2.getSequence() != null ? s2.getSequence() : 0;
-                    return Integer.compare(seq1, seq2);
-                })
-                .map(s -> {
-                    OriginalSentenceSynthesisStatusDTO.AudioUrlItem item = 
-                            new OriginalSentenceSynthesisStatusDTO.AudioUrlItem();
-                    item.setSequence(s.getSequence());
-                    item.setAudioUrl(s.getAudioUrl());
-                    return item;
-                })
-                .collect(Collectors.toList());
-        
-        result.setAudioUrlList(audioUrlList);
-        
-        return result;
+        return synthesisStatusService.getOriginalSentenceStatus(originalSentenceId);
     }
 
     @Override
     public TaskSynthesisStatusDTO getTaskStatus(Long taskId) {
-        // 参数验证
-        ValidationUtil.notNull(taskId, "taskId不能为空");
-        
-        // 查询该任务下的所有断句
-        List<BreakingSentence> sentences = breakingSentenceMapper.selectByTaskId(taskId);
-        
-        // 构建返回结果
-        TaskSynthesisStatusDTO result = new TaskSynthesisStatusDTO();
-        
-        int total = sentences.size();
-        long completed = sentences.stream()
-                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.COMPLETED))
-                .count();
-        long processing = sentences.stream()
-                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PROCESSING))
-                .count();
-        long pending = sentences.stream()
-                .filter(s -> s.getSynthesisStatus() == null || 
-                           Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.PENDING))
-                .count();
-        
-        // 计算进度（1-100）
-        int progress = total > 0 ? (int) Math.round((double) completed / total * 100) : 0;
-        
-        // 确定整体状态（使用统一工具类方法）
-        Integer status = SynthesisStatusUtil.aggregateSynthesisStatus(sentences);
-        
-        result.setStatus(status);
-        result.setProgress(progress);
-        result.setTotal(total);
-        result.setCompleted((int) completed);
-        result.setPending((int) (processing + pending));
-        
-        // 构建音频URL列表（只包含已完成的断句）
-        List<TaskSynthesisStatusDTO.AudioUrlItem> audioUrlList = sentences.stream()
-                .filter(s -> Objects.equals(s.getSynthesisStatus(), SynthesisStatus.Status.COMPLETED) 
-                        && StringUtils.hasText(s.getAudioUrl()))
-                .sorted((s1, s2) -> {
-                    int seq1 = s1.getSequence() != null ? s1.getSequence() : 0;
-                    int seq2 = s2.getSequence() != null ? s2.getSequence() : 0;
-                    return Integer.compare(seq1, seq2);
-                })
-                .map(s -> {
-                    TaskSynthesisStatusDTO.AudioUrlItem item = 
-                            new TaskSynthesisStatusDTO.AudioUrlItem();
-                    item.setSequence(s.getSequence());
-                    item.setAudioUrl(s.getAudioUrl());
-                    return item;
-                })
-                .collect(Collectors.toList());
-        
-        result.setAudioUrlList(audioUrlList);
-        
-        return result;
+        return synthesisStatusService.getTaskStatus(taskId);
     }
 }
 

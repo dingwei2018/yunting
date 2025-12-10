@@ -92,6 +92,43 @@
         GROUP BY rule_id
     </select>
 
+    <select id="selectGlobalRulesWithTaskClosedRules" resultType="map">
+        SELECT 
+            r.rule_id,
+            r.pattern,
+            r.rule_type,
+            r.rule_value,
+            CASE WHEN rra_closed.rule_id IS NOT NULL THEN 1 ELSE 0 END as task_closed
+        FROM reading_rules r
+        INNER JOIN reading_rule_applications rra_global ON r.rule_id = rra_global.rule_id
+            AND rra_global.is_open = 1
+        LEFT JOIN reading_rule_applications rra_closed ON r.rule_id = rra_closed.rule_id
+            AND rra_closed.type = 1
+            AND rra_closed.is_open = 0
+            AND (
+                rra_closed.from_id = #{taskId} 
+                OR EXISTS (
+                    SELECT 1 FROM breaking_sentences bs 
+                    WHERE bs.breaking_sentence_id = rra_closed.from_id AND bs.task_id = #{taskId}
+                )
+            )
+        GROUP BY r.rule_id, r.pattern, r.rule_type, r.rule_value, rra_closed.rule_id
+    </select>
+
+    <select id="selectBreakingSentenceRules" resultType="long">
+        SELECT DISTINCT rra.rule_id
+        FROM reading_rule_applications rra
+        WHERE rra.from_id = #{breakingSentenceId}
+          AND rra.type = 2
+          AND rra.is_open = 1
+    </select>
+
+    <select id="selectProcessingBreakingSentencesCount" resultType="int">
+        SELECT COUNT(*)
+        FROM breaking_sentences
+        WHERE synthesis_status = 1
+    </select>
+
 </mapper>
 
 
