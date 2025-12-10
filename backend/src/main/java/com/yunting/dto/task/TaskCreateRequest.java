@@ -10,6 +10,9 @@ import java.util.List;
  */
 public class TaskCreateRequest {
 
+    /**
+     * 文本内容，不能为空，最多10000字
+     */
     @NotBlank(message = "文本内容不能为空")
     @Size(max = 10000, message = "文本内容不能超过10000字")
     private String content;

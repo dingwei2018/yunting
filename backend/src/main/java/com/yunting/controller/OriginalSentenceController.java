@@ -8,6 +8,10 @@ import com.yunting.service.OriginalSentenceService;
 import com.yunting.util.ValidationUtil;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 拆句管理/拆句管理控制器
+ * @module 拆句管理
+ */
 @RestController
 @RequestMapping("/api/originalSentence")
 public class OriginalSentenceController {
@@ -18,6 +22,15 @@ public class OriginalSentenceController {
         this.originalSentenceService = originalSentenceService;
     }
 
+    /**
+     * 获取拆句列表
+     * 获取指定任务下的拆句列表，支持分页
+     *
+     * @param taskId 任务ID（必填）
+     * @param page 页码（可选，默认为1）
+     * @param pageSize 每页大小（可选，默认为10）
+     * @return 拆句列表响应，包含列表数据、总数、页码和每页大小
+     */
     @GetMapping("/getOriginalSentenceList")
     public ApiResponse<OriginalSentenceListResponseDTO> getOriginalSentenceList(
             @RequestParam("taskid") Long taskId,
@@ -27,6 +40,13 @@ public class OriginalSentenceController {
         return ResponseUtil.success(data);
     }
 
+    /**
+     * 删除拆句
+     * 删除指定的拆句及其关联的断句
+     *
+     * @param request 删除请求，包含 originalSentenceId
+     * @return 删除结果，成功返回"删除成功"
+     */
     @PostMapping("/delete")
     public ApiResponse<String> deleteOriginalSentence(
             @RequestBody OriginalSentenceDeleteRequest request) {

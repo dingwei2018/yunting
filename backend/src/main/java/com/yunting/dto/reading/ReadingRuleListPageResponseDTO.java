@@ -6,9 +6,21 @@ import java.util.List;
  * 阅读规范分页列表响应DTO
  */
 public class ReadingRuleListPageResponseDTO {
+    /**
+     * 阅读规范列表
+     */
     private List<ReadingRuleListItemDTO> readingRuleList;
+    /**
+     * 总记录数
+     */
     private Integer total;
+    /**
+     * 当前页码
+     */
     private Integer page;
+    /**
+     * 每页大小
+     */
     private Integer pageSize;
 
     public List<ReadingRuleListItemDTO> getReadingRuleList() {

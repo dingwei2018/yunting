@@ -1,9 +1,21 @@
 package com.yunting.dto.synthesis;
 
+/**
+ * 合成结果DTO
+ */
 public class SynthesisResultDTO {
+    /**
+     * 音频URL
+     */
     private String audioUrl;
+    /**
+     * 音频时长（秒）
+     */
     private Integer audioDuration;
-    private Integer synthesisStatus; // 合成状态（0-未合成，1-合成中，2-已合成，3-合成失败）
+    /**
+     * 合成状态（0-未合成，1-合成中，2-已合成，3-合成失败）
+     */
+    private Integer synthesisStatus;
 
     public String getAudioUrl() {
         return audioUrl;

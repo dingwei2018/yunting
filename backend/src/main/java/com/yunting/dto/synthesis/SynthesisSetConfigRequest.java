@@ -6,8 +6,17 @@ import java.util.List;
  * 设置拆句合成参数请求DTO
  */
 public class SynthesisSetConfigRequest {
+    /**
+     * 任务ID
+     */
     private Long taskId;
+    /**
+     * 拆句ID
+     */
     private Long originalSentenceId;
+    /**
+     * 断句配置列表
+     */
     private List<BreakingSentenceConfig> breakingSentenceList;
 
     public Long getTaskId() {
@@ -38,16 +47,49 @@ public class SynthesisSetConfigRequest {
      * 断句配置
      */
     public static class BreakingSentenceConfig {
+        /**
+         * 断句ID
+         */
         private Long breakingSentenceId;
+        /**
+         * 序号
+         */
         private Integer sequence;
+        /**
+         * 断句内容
+         */
         private String content;
+        /**
+         * 音量（0-100）
+         */
         private Integer volume;
+        /**
+         * 语音ID
+         */
         private String voiceId;
+        /**
+         * 语速
+         */
         private Integer speed;
+        /**
+         * 停顿配置列表
+         */
         private List<BreakConfig> breakList;
+        /**
+         * 多音字配置列表
+         */
         private List<PhonemeConfig> phonemeList;
+        /**
+         * 局部语速配置列表
+         */
         private List<ProsodyConfig> prosodyList;
+        /**
+         * 静音配置列表
+         */
         private List<SilenceConfig> silenceList;
+        /**
+         * 阅读规范配置列表
+         */
         private List<ReadRuleConfig> readRule;
 
         public Long getBreakingSentenceId() {
@@ -143,7 +185,13 @@ public class SynthesisSetConfigRequest {
      * 停顿配置
      */
     public static class BreakConfig {
+        /**
+         * 停顿位置
+         */
         private Integer location;
+        /**
+         * 停顿时长（毫秒）
+         */
         private Integer duration;
 
         public Integer getLocation() {
@@ -167,7 +215,13 @@ public class SynthesisSetConfigRequest {
      * 多音字配置
      */
     public static class PhonemeConfig {
+        /**
+         * 音标
+         */
         private String ph;
+        /**
+         * 位置
+         */
         private Integer location;
 
         public String getPh() {
@@ -191,8 +245,17 @@ public class SynthesisSetConfigRequest {
      * 局部语速配置
      */
     public static class ProsodyConfig {
+        /**
+         * 语速
+         */
         private Integer rate;
+        /**
+         * 开始位置
+         */
         private Integer begin;
+        /**
+         * 结束位置
+         */
         private Integer end;
 
         public Integer getRate() {
@@ -224,7 +287,13 @@ public class SynthesisSetConfigRequest {
      * 静音配置
      */
     public static class SilenceConfig {
+        /**
+         * 静音位置
+         */
         private Integer location;
+        /**
+         * 静音时长（毫秒）
+         */
         private Integer duration;
 
         public Integer getLocation() {
@@ -248,8 +317,17 @@ public class SynthesisSetConfigRequest {
      * 阅读规范配置
      */
     public static class ReadRuleConfig {
+        /**
+         * 规则ID
+         */
         private Long ruleId;
-        private String partern; // 注意：文档中是 "partern" 不是 "pattern"
+        /**
+         * 匹配模式（注意：文档中是 "partern" 不是 "pattern"）
+         */
+        private String partern;
+        /**
+         * 是否开启
+         */
         private Boolean isOpen;
 
         public Long getRuleId() {

@@ -2,10 +2,25 @@ package com.yunting.dto.original;
 
 import java.util.List;
 
+/**
+ * 拆句列表响应DTO
+ */
 public class OriginalSentenceListResponseDTO {
+    /**
+     * 拆句列表
+     */
     private List<OriginalSentenceListItemDTO> list;
+    /**
+     * 总记录数
+     */
     private Long total;
+    /**
+     * 当前页码
+     */
     private Integer page;
+    /**
+     * 每页大小
+     */
     private Integer pageSize;
 
     public List<OriginalSentenceListItemDTO> getList() {

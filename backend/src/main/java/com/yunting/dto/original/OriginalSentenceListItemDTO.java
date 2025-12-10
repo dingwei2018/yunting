@@ -2,11 +2,29 @@ package com.yunting.dto.original;
 
 import java.util.List;
 
+/**
+ * 拆句列表项DTO
+ */
 public class OriginalSentenceListItemDTO {
+    /**
+     * 拆句ID
+     */
     private Long originalSentenceId;
+    /**
+     * 序号
+     */
     private Integer sequence;
+    /**
+     * 拆句内容
+     */
     private String content;
+    /**
+     * 合成状态（0-未合成，1-合成中，2-已合成，3-合成失败）
+     */
     private Integer synthesisStatus;
+    /**
+     * 断句列表
+     */
     private List<BreakingSentenceWithSettingDTO> breakingSentenceList;
 
     public Long getOriginalSentenceId() {

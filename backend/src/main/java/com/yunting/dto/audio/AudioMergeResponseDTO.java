@@ -1,6 +1,12 @@
 package com.yunting.dto.audio;
 
+/**
+ * 音频合并响应DTO
+ */
 public class AudioMergeResponseDTO {
+    /**
+     * 合并任务ID
+     */
     private Long mergeId;
 
     public AudioMergeResponseDTO() {

@@ -20,6 +20,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 合成管理/合成管理控制器
+ * @module 合成管理
+ */
 @RestController
 @RequestMapping("/api/synthesis")
 public class SynthesisController {
@@ -36,6 +40,9 @@ public class SynthesisController {
     /**
      * 合成断句
      * 合成或重新合成单个断句
+     *
+     * @param request 合成请求，包含 breakingSentenceId
+     * @return 合成状态，成功返回"合成请求已提交"
      */
     @PostMapping("/breakingSentence")
     public ApiResponse<String> synthesizeBreakingSentence(
@@ -48,6 +55,9 @@ public class SynthesisController {
     /**
      * 合成拆句
      * 合成或重新合成拆句下的所有断句
+     *
+     * @param request 合成请求，包含 originalSentenceId
+     * @return 合成状态，成功返回"合成请求已提交"
      */
     @PostMapping("/originalSentence")
     public ApiResponse<String> synthesizeOriginalSentence(
@@ -60,6 +70,9 @@ public class SynthesisController {
     /**
      * 合成任务
      * 合成或重新合成任务下的所有断句
+     *
+     * @param request 合成请求，包含 taskId
+     * @return 合成状态，成功返回"合成请求已提交"
      */
     @PostMapping("/task")
     public ApiResponse<String> synthesizeTask(
@@ -72,6 +85,9 @@ public class SynthesisController {
     /**
      * 设置拆句合成参数
      * 覆盖旧数据
+     *
+     * @param request 配置请求，包含任务ID、拆句ID和断句配置列表
+     * @return 配置结果，成功返回"配置更新成功"
      */
     @PostMapping("/setConfig")
     public ApiResponse<String> setConfig(@RequestBody SynthesisSetConfigRequest request) {

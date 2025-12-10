@@ -2,13 +2,37 @@ package com.yunting.dto.original;
 
 import java.util.List;
 
+/**
+ * 断句配置DTO
+ */
 public class BreakingSentenceSettingDTO {
+    /**
+     * 断句内容
+     */
     private String content;
+    /**
+     * 音量（0-100）
+     */
     private Integer volume;
+    /**
+     * 语音ID
+     */
     private String voiceId;
+    /**
+     * 停顿配置列表
+     */
     private List<BreakConfigDTO> breakList;
+    /**
+     * 多音字配置列表
+     */
     private List<PhonemeConfigDTO> phonemeList;
+    /**
+     * 局部语速配置列表
+     */
     private List<ProsodyConfigDTO> prosodyList;
+    /**
+     * 静音配置列表
+     */
     private List<SilenceConfigDTO> silentList;
 
     public String getContent() {

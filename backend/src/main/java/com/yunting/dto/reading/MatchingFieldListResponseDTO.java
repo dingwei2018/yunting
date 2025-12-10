@@ -6,7 +6,13 @@ import java.util.List;
  * 匹配字段列表响应DTO
  */
 public class MatchingFieldListResponseDTO {
-    private Integer total; // 注意：文档中是 "toatal"，但应使用 "total"
+    /**
+     * 匹配字段总数
+     */
+    private Integer total;
+    /**
+     * 匹配字段列表
+     */
     private List<MatchingFieldDTO> fieldList;
 
     public Integer getTotal() {

@@ -6,11 +6,29 @@ import java.time.LocalDateTime;
  * 原始拆句DTO
  */
 public class OriginalSentenceDTO {
+    /**
+     * 拆句ID
+     */
     private Long originalSentenceId;
+    /**
+     * 任务ID
+     */
     private Long taskId;
+    /**
+     * 拆句内容
+     */
     private String content;
+    /**
+     * 字符数
+     */
     private Integer charCount;
+    /**
+     * 序号
+     */
     private Integer sequence;
+    /**
+     * 创建时间
+     */
     private LocalDateTime createdAt;
 
     public Long getOriginalSentenceId() {

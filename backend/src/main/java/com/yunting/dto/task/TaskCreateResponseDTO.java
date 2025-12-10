@@ -7,14 +7,41 @@ import java.util.List;
  * 创建任务响应DTO
  */
 public class TaskCreateResponseDTO {
+    /**
+     * 任务ID
+     */
     private Long taskId;
+    /**
+     * 任务文本内容
+     */
     private String content;
+    /**
+     * 字符数
+     */
     private Integer charCount;
+    /**
+     * 任务状态
+     */
     private Integer status;
+    /**
+     * 音频URL
+     */
     private String audioUrl;
+    /**
+     * 音频时长（秒）
+     */
     private Integer audioDuration;
+    /**
+     * 拆句列表
+     */
     private List<OriginalSentenceDTO> originalSentenceList;
+    /**
+     * 创建时间
+     */
     private LocalDateTime createdAt;
+    /**
+     * 更新时间
+     */
     private LocalDateTime updatedAt;
 
     public Long getTaskId() {

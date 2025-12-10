@@ -1,9 +1,24 @@
 package com.yunting.dto.original;
 
+/**
+ * 多音字配置DTO
+ */
 public class PhonemeConfigDTO {
+    /**
+     * 音标
+     */
     private String ph;
+    /**
+     * 字母表
+     */
     private String alphabet;
+    /**
+     * 开始位置
+     */
     private Integer begin;
+    /**
+     * 结束位置
+     */
     private Integer end;
 
     public String getPh() {

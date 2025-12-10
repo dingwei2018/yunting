@@ -1,8 +1,20 @@
 package com.yunting.dto.original;
 
+/**
+ * 局部语速配置DTO
+ */
 public class ProsodyConfigDTO {
+    /**
+     * 语速（slow, medium, fast）
+     */
     private String rate;
+    /**
+     * 开始位置
+     */
     private Integer begin;
+    /**
+     * 结束位置
+     */
     private Integer end;
 
     public String getRate() {

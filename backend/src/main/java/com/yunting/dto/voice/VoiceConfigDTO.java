@@ -2,12 +2,29 @@ package com.yunting.dto.voice;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+/**
+ * 语音配置DTO
+ */
 public class VoiceConfigDTO {
+    /**
+     * 语音ID
+     */
     private String voiceId;
+    /**
+     * 语音名称
+     */
     private String voiceName;
+    /**
+     * 语音类型
+     */
     private String voiceType;
+    /**
+     * 排序顺序
+     */
     private Integer sortOrder;
-    
+    /**
+     * 头像URL
+     */
     @JsonProperty("avatar_url")
     private String headerUrl;
 

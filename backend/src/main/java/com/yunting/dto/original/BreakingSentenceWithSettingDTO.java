@@ -1,19 +1,64 @@
 package com.yunting.dto.original;
 
+/**
+ * 带配置的断句DTO
+ */
 public class BreakingSentenceWithSettingDTO {
+    /**
+     * 断句ID
+     */
     private Long breakingSentenceId;
+    /**
+     * 任务ID
+     */
     private Long taskId;
+    /**
+     * 拆句ID
+     */
     private Long originalSentenceId;
+    /**
+     * 断句内容
+     */
     private String content;
+    /**
+     * 字符数
+     */
     private Integer charCount;
+    /**
+     * 序号
+     */
     private Integer sequence;
+    /**
+     * 合成状态（0-未合成，1-合成中，2-已合成，3-合成失败）
+     */
     private Integer synthesisStatus;
+    /**
+     * 音频URL
+     */
     private String audioUrl;
+    /**
+     * 音频时长（秒）
+     */
     private Integer audioDuration;
+    /**
+     * SSML内容
+     */
     private String ssml;
+    /**
+     * 华为云任务ID
+     */
     private String jobId;
+    /**
+     * 创建时间
+     */
     private String createdAt;
+    /**
+     * 更新时间
+     */
     private String updatedAt;
+    /**
+     * 断句配置
+     */
     private BreakingSentenceSettingDTO setting;
 
     public Long getBreakingSentenceId() {

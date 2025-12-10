@@ -4,9 +4,21 @@ package com.yunting.dto.reading;
  * 匹配字段DTO
  */
 public class MatchingFieldDTO {
+    /**
+     * 规则ID
+     */
     private Long ruleId;
-    private Integer location; // 匹配字段第一个字符的位置
-    private String pattern; // 字段
+    /**
+     * 匹配字段第一个字符的位置
+     */
+    private Integer location;
+    /**
+     * 字段
+     */
+    private String pattern;
+    /**
+     * 是否开启
+     */
     private Boolean isOpen;
 
     public Long getRuleId() {

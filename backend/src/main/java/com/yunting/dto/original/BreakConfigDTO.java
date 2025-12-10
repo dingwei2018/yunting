@@ -1,7 +1,16 @@
 package com.yunting.dto.original;
 
+/**
+ * 停顿配置DTO
+ */
 public class BreakConfigDTO {
+    /**
+     * 停顿位置
+     */
     private String location;
+    /**
+     * 停顿时长（毫秒）
+     */
     private String duration;
 
     public String getLocation() {
