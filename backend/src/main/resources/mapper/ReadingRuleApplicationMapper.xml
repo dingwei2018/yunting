@@ -19,10 +19,11 @@
     </delete>
 
     <insert id="insertBatch" parameterType="java.util.List">
-        INSERT INTO reading_rule_applications (rule_id, from_id, type, created_at)
+        INSERT INTO reading_rule_applications (rule_id, from_id, type, is_open, created_at)
         VALUES
         <foreach collection="list" item="item" separator=",">
-            (#{item.ruleId}, #{item.fromId}, #{item.type}, NOW())
+            (#{item.ruleId}, #{item.fromId}, #{item.type}, 
+             COALESCE(#{item.isOpen}, 1), NOW())
         </foreach>
     </insert>
 
@@ -31,8 +32,39 @@
         FROM reading_rule_applications rra
         <if test="taskId != null">
             INNER JOIN breaking_sentences bs ON rra.from_id = bs.breaking_sentence_id
-            WHERE bs.task_id = #{taskId}
+            WHERE bs.task_id = #{taskId} AND rra.is_open = 1
         </if>
+        <if test="taskId == null">
+            WHERE rra.is_open = 1
+        </if>
+    </select>
+
+    <update id="updateIsOpenByRuleIdAndTaskId">
+        UPDATE reading_rule_applications rra
+        INNER JOIN breaking_sentences bs ON rra.from_id = bs.breaking_sentence_id
+        SET rra.is_open = #{isOpen}
+        WHERE rra.rule_id = #{ruleId} AND bs.task_id = #{taskId}
+    </update>
+
+    <select id="selectByRuleIdAndTaskId" resultType="com.yunting.model.ReadingRuleApplication">
+        SELECT rra.*
+        FROM reading_rule_applications rra
+        INNER JOIN breaking_sentences bs ON rra.from_id = bs.breaking_sentence_id
+        WHERE rra.rule_id = #{ruleId} AND bs.task_id = #{taskId}
+    </select>
+
+    <select id="selectRuleIdsWithIsOpenByTaskId" resultType="map">
+        SELECT rra.rule_id as rule_id, MAX(rra.is_open) as is_open
+        FROM reading_rule_applications rra
+        INNER JOIN breaking_sentences bs ON rra.from_id = bs.breaking_sentence_id
+        WHERE bs.task_id = #{taskId}
+        GROUP BY rra.rule_id
+    </select>
+
+    <select id="selectAllRuleIdsWithIsOpen" resultType="map">
+        SELECT rule_id as rule_id, MAX(is_open) as is_open
+        FROM reading_rule_applications
+        GROUP BY rule_id
     </select>
 
 </mapper>

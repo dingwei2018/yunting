@@ -8,6 +8,7 @@ import com.yunting.dto.reading.ReadingRuleDTO;
 import com.yunting.dto.reading.ReadingRuleListPageResponseDTO;
 import com.yunting.dto.reading.ReadingRuleListResponseDTO;
 import com.yunting.dto.reading.ReadingRuleSetGlobalSettingRequest;
+import com.yunting.dto.reading.ReadingRuleSetGlobalSettingResponseDTO;
 
 public interface ReadingRuleService {
 
@@ -17,7 +18,7 @@ public interface ReadingRuleService {
 
     ReadingRuleApplyResponseDTO applyReadingRule(Long ruleId, Long taskId);
 
-    String setGlobalSetting(ReadingRuleSetGlobalSettingRequest request);
+    ReadingRuleSetGlobalSettingResponseDTO setGlobalSetting(ReadingRuleSetGlobalSettingRequest request);
 
     ReadingRuleListPageResponseDTO getReadingRuleList(Long taskId, Integer ruleType, Integer page, Integer pageSize);
 

@@ -4,6 +4,7 @@ import com.yunting.model.ReadingRuleApplication;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
+import java.util.Map;
 
 public interface ReadingRuleApplicationMapper {
 
@@ -23,6 +24,42 @@ public interface ReadingRuleApplicationMapper {
     int deleteByRuleIdAndTaskId(@Param("ruleId") Long ruleId, @Param("taskId") Long taskId);
 
     List<Long> selectRuleIdsByTaskId(@Param("taskId") Long taskId);
+
+    /**
+     * 批量更新指定任务下指定规则的isOpen状态
+     *
+     * @param ruleId 规则ID
+     * @param taskId 任务ID
+     * @param isOpen 是否开启
+     * @return 更新的记录数
+     */
+    int updateIsOpenByRuleIdAndTaskId(@Param("ruleId") Long ruleId, @Param("taskId") Long taskId, @Param("isOpen") Boolean isOpen);
+
+    /**
+     * 查询指定任务下指定规则的应用记录（包含isOpen状态）
+     *
+     * @param ruleId 规则ID
+     * @param taskId 任务ID
+     * @return 应用记录列表
+     */
+    List<ReadingRuleApplication> selectByRuleIdAndTaskId(@Param("ruleId") Long ruleId, @Param("taskId") Long taskId);
+
+    /**
+     * 查询指定任务下所有规则的isOpen状态
+     * 返回List<Map>，每个Map包含rule_id和is_open字段
+     *
+     * @param taskId 任务ID
+     * @return List<Map>，每个Map包含rule_id和is_open
+     */
+    List<Map<String, Object>> selectRuleIdsWithIsOpenByTaskId(@Param("taskId") Long taskId);
+
+    /**
+     * 查询所有已应用规则的isOpen状态（用于全局查询）
+     * 返回List<Map>，每个Map包含rule_id和is_open字段
+     *
+     * @return List<Map>，每个Map包含rule_id和is_open
+     */
+    List<Map<String, Object>> selectAllRuleIdsWithIsOpen();
 }
 
 

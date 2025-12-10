@@ -13,7 +13,7 @@
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.yunting.model.ReadingRule" useGeneratedKeys="true" keyProperty="ruleId">
+    <insert id="insert" parameterType="com.yunting.model.ReadingRule" useGeneratedKeys="true" keyProperty="ruleId" keyColumn="rule_id">
         INSERT INTO reading_rules (pattern, rule_type, rule_value, created_at, updated_at)
         VALUES (#{pattern}, #{ruleType}, #{ruleValue}, NOW(), NOW())
     </insert>

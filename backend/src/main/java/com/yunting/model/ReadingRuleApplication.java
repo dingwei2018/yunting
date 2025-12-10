@@ -7,6 +7,7 @@ public class ReadingRuleApplication {
     private Long ruleId;
     private Long fromId;
     private Integer type;
+    private Boolean isOpen; // 是否开启，默认值为true
     private LocalDateTime createdAt;
 
     public Long getApplicationId() {
@@ -39,6 +40,14 @@ public class ReadingRuleApplication {
 
     public void setType(Integer type) {
         this.type = type;
+    }
+
+    public Boolean getIsOpen() {
+        return isOpen;
+    }
+
+    public void setIsOpen(Boolean isOpen) {
+        this.isOpen = isOpen;
     }
 
     public LocalDateTime getCreatedAt() {

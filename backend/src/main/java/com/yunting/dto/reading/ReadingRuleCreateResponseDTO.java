@@ -1,8 +1,11 @@
 package com.yunting.dto.reading;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 /**
  * 创建阅读规范响应DTO
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ReadingRuleCreateResponseDTO {
     private Long ruleId;
     private Long taskId;

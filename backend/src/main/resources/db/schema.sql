@@ -127,6 +127,7 @@ CREATE TABLE `reading_rule_applications`  (
                                               `rule_id` bigint(0) NOT NULL,
                                               `from_id` bigint(0) NOT NULL,
                                               `type` tinyint(0) NOT NULL COMMENT '1，任务，2，断句',
+                                              `is_open` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否开启：0-关闭，1-打开',
                                               `created_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                               PRIMARY KEY (`application_id`) USING BTREE,
                                               UNIQUE INDEX `uk_rule_from`(`rule_id`, `from_id`) USING BTREE,

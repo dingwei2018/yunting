@@ -539,6 +539,7 @@ public class SynthesisServiceImpl implements SynthesisService {
                         application.setRuleId(readRuleConfig.getRuleId());
                         application.setFromId(breakingSentenceId);
                         application.setType(ReadingRuleApplicationType.Type.BREAKING_SENTENCE);
+                        application.setIsOpen(readRuleConfig.getIsOpen()); // 使用前端传入的isOpen值
                         readingRuleApplications.add(application);
                     }
                 }

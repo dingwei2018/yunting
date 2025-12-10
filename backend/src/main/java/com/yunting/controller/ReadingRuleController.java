@@ -7,6 +7,7 @@ import com.yunting.dto.reading.ReadingRuleCreateRequest;
 import com.yunting.dto.reading.ReadingRuleCreateResponseDTO;
 import com.yunting.dto.reading.ReadingRuleListPageResponseDTO;
 import com.yunting.dto.reading.ReadingRuleSetGlobalSettingRequest;
+import com.yunting.dto.reading.ReadingRuleSetGlobalSettingResponseDTO;
 import com.yunting.service.ReadingRuleService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,11 +46,11 @@ public class ReadingRuleController {
      * 开关全局阅读规范
      *
      * @param request 开关全局阅读规范请求
-     * @return 设置结果（字符串）
+     * @return 设置结果，包含过滤的断句列表
      */
     @PostMapping("/setGlobalSetting")
-    public ApiResponse<String> setGlobalSetting(@Valid @RequestBody ReadingRuleSetGlobalSettingRequest request) {
-        String data = readingRuleService.setGlobalSetting(request);
+    public ApiResponse<ReadingRuleSetGlobalSettingResponseDTO> setGlobalSetting(@Valid @RequestBody ReadingRuleSetGlobalSettingRequest request) {
+        ReadingRuleSetGlobalSettingResponseDTO data = readingRuleService.setGlobalSetting(request);
         return ResponseUtil.success(data);
     }
 
