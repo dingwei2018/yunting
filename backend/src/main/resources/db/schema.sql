@@ -125,7 +125,7 @@ DROP TABLE IF EXISTS `reading_rule_applications`;
 CREATE TABLE `reading_rule_applications`  (
                                               `application_id` bigint(0) NOT NULL AUTO_INCREMENT,
                                               `rule_id` bigint(0) NOT NULL,
-                                              `from_id` bigint(0) NOT NULL,
+                                              `from_id` bigint(0) NOT NULL COMMENT '当type=1且breakingSentenceId为空时，from_id为task_id；当type=1且breakingSentenceId有值时，from_id为breakingSentenceId；当type=2时，from_id为breakingSentenceId',
                                               `type` tinyint(0) NOT NULL COMMENT '1，任务，2，断句',
                                               `is_open` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否开启：0-关闭，1-打开',
                                               `created_at` datetime(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -133,7 +133,6 @@ CREATE TABLE `reading_rule_applications`  (
                                               UNIQUE INDEX `uk_rule_from`(`rule_id`, `from_id`) USING BTREE,
                                               INDEX `idx_application_rule_id`(`rule_id`) USING BTREE,
                                               INDEX `idx_application_from_id`(`from_id`) USING BTREE,
-                                              CONSTRAINT `fk_application_from` FOREIGN KEY (`from_id`) REFERENCES `breaking_sentences` (`breaking_sentence_id`) ON DELETE CASCADE ON UPDATE RESTRICT,
                                               CONSTRAINT `fk_application_rule` FOREIGN KEY (`rule_id`) REFERENCES `reading_rules` (`rule_id`) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '阅读规范应用表' ROW_FORMAT = Dynamic;
 

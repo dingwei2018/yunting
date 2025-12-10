@@ -12,7 +12,6 @@ import com.yunting.dto.reading.ReadingRuleListItemDTO;
 import com.yunting.dto.reading.ReadingRuleListPageResponseDTO;
 import com.yunting.dto.reading.ReadingRuleListResponseDTO;
 import com.yunting.dto.reading.ReadingRuleSetGlobalSettingRequest;
-import com.yunting.dto.reading.ReadingRuleSetGlobalSettingResponseDTO;
 import com.yunting.exception.BusinessException;
 import com.yunting.mapper.BreakingSentenceMapper;
 import com.yunting.mapper.ReadingRuleApplicationMapper;
@@ -131,7 +130,7 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public ReadingRuleSetGlobalSettingResponseDTO setGlobalSetting(ReadingRuleSetGlobalSettingRequest request) {
+    public String setGlobalSetting(ReadingRuleSetGlobalSettingRequest request) {
         ValidationUtil.notNull(request, "请求参数不能为空");
         ValidationUtil.notNull(request.getTaskId(), "taskId不能为空");
         ValidationUtil.notNull(request.getRuleId(), "ruleId不能为空");
@@ -149,65 +148,47 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
             throw new BusinessException(10404, "任务不存在");
         }
 
-        // 查询任务下的所有断句
-        List<BreakingSentence> sentences = breakingSentenceMapper.selectByTaskId(request.getTaskId());
-        if (CollectionUtils.isEmpty(sentences)) {
-            throw new BusinessException(10404, "任务暂无断句");
-        }
+        List<ReadingRuleApplication> applications = new ArrayList<>();
 
-        // 查询该规则在该任务下是否已有应用记录
-        List<ReadingRuleApplication> existingApplications = readingRuleApplicationMapper.selectByRuleIdAndTaskId(
-                request.getRuleId(), request.getTaskId());
-
-        if (CollectionUtils.isEmpty(existingApplications)) {
-            // 如果不存在应用记录，需要创建（isOpen为true时创建，false时不创建）
-            if (request.getIsOpen()) {
-                // 为所有断句创建应用记录，isOpen设置为true
-                List<ReadingRuleApplication> applications = sentences.stream()
-                        .map(sentence -> {
-                            ReadingRuleApplication application = new ReadingRuleApplication();
-                            application.setRuleId(request.getRuleId());
-                            application.setFromId(sentence.getBreakingSentenceId());
-                            application.setType(ReadingRuleApplicationType.Type.BREAKING_SENTENCE);
-                            application.setIsOpen(true); // 默认值为true
-                            return application;
-                        })
-                        .collect(Collectors.toList());
-
-                if (!applications.isEmpty()) {
-                    readingRuleApplicationMapper.insertBatch(applications);
-                }
+        // 判断是否有breakingSentenceId
+        if (request.getBreakingSentenceId() != null) {
+            // 如果breakingSentenceId有值，则type=1（任务级），只处理这个断句
+            BreakingSentence sentence = breakingSentenceMapper.selectById(request.getBreakingSentenceId());
+            if (sentence == null) {
+                throw new BusinessException(10404, "断句不存在");
             }
+            // 验证断句是否属于该任务
+            if (!sentence.getTaskId().equals(request.getTaskId())) {
+                throw new BusinessException(10400, "断句不属于该任务");
+            }
+
+            ReadingRuleApplication application = new ReadingRuleApplication();
+            application.setRuleId(request.getRuleId());
+            application.setFromId(request.getBreakingSentenceId());
+            application.setType(ReadingRuleApplicationType.Type.TASK); // type = 1（任务级）
+            application.setIsOpen(request.getIsOpen());
+            applications.add(application);
         } else {
-            // 如果已存在应用记录，更新isOpen状态
-            readingRuleApplicationMapper.updateIsOpenByRuleIdAndTaskId(
-                    request.getRuleId(), request.getTaskId(), request.getIsOpen());
+            // 如果breakingSentenceId为空，则type=1（任务级），from_id为taskId，只创建一条记录
+            ReadingRuleApplication application = new ReadingRuleApplication();
+            application.setRuleId(request.getRuleId());
+            application.setFromId(request.getTaskId()); // from_id为taskId
+            application.setType(ReadingRuleApplicationType.Type.TASK); // type = 1（任务级）
+            application.setIsOpen(request.getIsOpen());
+            applications.add(application);
         }
 
-        // 查找匹配该规则的断句（内容中包含pattern的断句）
-        String pattern = rule.getPattern();
-        List<ReadingRuleSetGlobalSettingResponseDTO.FilteredBreakingSentenceDTO> filteredSentences = new ArrayList<>();
-        
-        if (StringUtils.hasText(pattern)) {
-            for (BreakingSentence sentence : sentences) {
-                if (sentence.getContent() != null && sentence.getContent().contains(pattern)) {
-                    ReadingRuleSetGlobalSettingResponseDTO.FilteredBreakingSentenceDTO dto = 
-                        new ReadingRuleSetGlobalSettingResponseDTO.FilteredBreakingSentenceDTO();
-                    dto.setBreakingSentenceId(sentence.getBreakingSentenceId());
-                    dto.setTaskId(sentence.getTaskId());
-                    dto.setSequence(sentence.getSequence());
-                    dto.setContent(sentence.getContent());
-                    filteredSentences.add(dto);
-                }
+        if (!applications.isEmpty()) {
+            // 使用 INSERT ... ON DUPLICATE KEY UPDATE 来处理唯一索引冲突
+            // 如果记录已存在，则更新isOpen；如果不存在，则插入新记录
+            int affectedRows = readingRuleApplicationMapper.insertOrUpdateBatch(applications);
+            if (affectedRows <= 0) {
+                throw new BusinessException(10400, "设置阅读规范应用记录失败");
             }
         }
 
-        // 构建响应
-        ReadingRuleSetGlobalSettingResponseDTO response = new ReadingRuleSetGlobalSettingResponseDTO();
-        response.setFilteredSentences(filteredSentences);
-        response.setTotal(filteredSentences.size());
-        
-        return response;
+        // 返回null，使data字段不返回任何内容
+        return null;
     }
 
     @Override
@@ -327,7 +308,7 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
                 field.setPattern(pattern);
                 // 从数据库读取isOpen状态
                 Boolean isOpen = ruleIsOpenMap.get(rule.getRuleId());
-                field.setIsOpen(isOpen != null && isOpen); // 如果不存在记录，则为false
+                field.setIsOpen(isOpen == null ? true : isOpen); // 如果不存在记录，则为true
                 fieldList.add(field);
                 
                 // 移动到下一个可能的位置

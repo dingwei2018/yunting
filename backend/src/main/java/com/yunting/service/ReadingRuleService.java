@@ -18,7 +18,7 @@ public interface ReadingRuleService {
 
     ReadingRuleApplyResponseDTO applyReadingRule(Long ruleId, Long taskId);
 
-    ReadingRuleSetGlobalSettingResponseDTO setGlobalSetting(ReadingRuleSetGlobalSettingRequest request);
+    String setGlobalSetting(ReadingRuleSetGlobalSettingRequest request);
 
     ReadingRuleListPageResponseDTO getReadingRuleList(Long taskId, Integer ruleType, Integer page, Integer pageSize);
 

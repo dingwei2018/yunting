@@ -12,6 +12,14 @@ public interface ReadingRuleApplicationMapper {
 
     int insertBatch(@Param("list") List<ReadingRuleApplication> list);
 
+    /**
+     * 批量插入或更新应用记录（如果已存在则更新isOpen，不存在则插入）
+     *
+     * @param list 应用记录列表
+     * @return 插入/更新的记录数
+     */
+    int insertOrUpdateBatch(@Param("list") List<ReadingRuleApplication> list);
+
     int deleteByRuleId(@Param("ruleId") Long ruleId);
 
     /**
