@@ -8,11 +8,14 @@ import com.yunting.exception.BusinessException;
 import com.yunting.mapper.AudioMergeMapper;
 import com.yunting.mapper.BreakingSentenceMapper;
 import com.yunting.mapper.OriginalSentenceMapper;
+import com.yunting.mapper.SynthesisSettingMapper;
 import com.yunting.mapper.TaskMapper;
 import com.yunting.model.AudioMerge;
 import com.yunting.model.BreakingSentence;
 import com.yunting.model.OriginalSentence;
+import com.yunting.model.SynthesisSetting;
 import com.yunting.model.Task;
+import com.yunting.constant.SynthesisDefault;
 import com.yunting.service.TaskService;
 import com.yunting.util.SentenceSplitter;
 import com.yunting.util.ValidationUtil;
@@ -40,15 +43,18 @@ public class TaskServiceImpl implements TaskService {
     private final TaskMapper taskMapper;
     private final OriginalSentenceMapper originalSentenceMapper;
     private final BreakingSentenceMapper breakingSentenceMapper;
+    private final SynthesisSettingMapper synthesisSettingMapper;
     private final AudioMergeMapper audioMergeMapper;
 
     public TaskServiceImpl(TaskMapper taskMapper,
                            OriginalSentenceMapper originalSentenceMapper,
                            BreakingSentenceMapper breakingSentenceMapper,
+                           SynthesisSettingMapper synthesisSettingMapper,
                            AudioMergeMapper audioMergeMapper) {
         this.taskMapper = taskMapper;
         this.originalSentenceMapper = originalSentenceMapper;
         this.breakingSentenceMapper = breakingSentenceMapper;
+        this.synthesisSettingMapper = synthesisSettingMapper;
         this.audioMergeMapper = audioMergeMapper;
     }
 
@@ -139,6 +145,27 @@ public class TaskServiceImpl implements TaskService {
             breakingSentences.add(breaking);
         }
         breakingSentenceMapper.insertBatch(breakingSentences);
+
+        // 查询已保存的断句（获取生成的ID）
+        List<BreakingSentence> persistedBreakingSentences = breakingSentenceMapper.selectByTaskId(task.getTaskId());
+        if (persistedBreakingSentences.size() != breakingSentences.size()) {
+            throw new BusinessException("保存断句失败");
+        }
+
+        // 为每个断句创建默认的合成参数配置
+        List<SynthesisSetting> synthesisSettings = new ArrayList<>();
+        for (BreakingSentence breaking : persistedBreakingSentences) {
+            SynthesisSetting setting = new SynthesisSetting();
+            setting.setBreakingSentenceId(breaking.getBreakingSentenceId());
+            setting.setVoiceId(SynthesisDefault.VOICE_ID);
+            setting.setVolume(SynthesisDefault.VOLUME);
+            setting.setSpeechRate(SynthesisDefault.SPEECH_RATE);
+            setting.setPitch(SynthesisDefault.PITCH);
+            synthesisSettings.add(setting);
+        }
+        if (!synthesisSettings.isEmpty()) {
+            synthesisSettingMapper.insertBatch(synthesisSettings);
+        }
 
         // 构建响应DTO
         TaskCreateResponseDTO response = new TaskCreateResponseDTO();

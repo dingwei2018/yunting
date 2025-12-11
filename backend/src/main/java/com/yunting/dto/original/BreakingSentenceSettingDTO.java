@@ -15,6 +15,10 @@ public class BreakingSentenceSettingDTO {
      */
     private Integer volume;
     /**
+     * 语速，50-200，100为正常
+     */
+    private Integer speed;
+    /**
      * 语音ID
      */
     private String voiceId;
@@ -49,6 +53,14 @@ public class BreakingSentenceSettingDTO {
 
     public void setVolume(Integer volume) {
         this.volume = volume;
+    }
+
+    public Integer getSpeed() {
+        return speed;
+    }
+
+    public void setSpeed(Integer speed) {
+        this.speed = speed;
     }
 
     public String getVoiceId() {

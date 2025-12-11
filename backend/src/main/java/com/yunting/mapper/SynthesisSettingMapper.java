@@ -13,6 +13,8 @@ public interface SynthesisSettingMapper {
 
     int upsert(SynthesisSetting setting);
 
+    int insertBatch(@Param("list") List<SynthesisSetting> list);
+
     int deleteByBreakingSentenceId(@Param("breakingSentenceId") Long breakingSentenceId);
 }
 

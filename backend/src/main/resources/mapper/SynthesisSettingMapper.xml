@@ -44,6 +44,15 @@
             updated_at = NOW()
     </insert>
 
+    <insert id="insertBatch" parameterType="java.util.List">
+        INSERT INTO synthesis_settings (breaking_sentence_id, voice_id, voice_name, speech_rate, volume, pitch,
+                                        created_at, updated_at)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.breakingSentenceId}, #{item.voiceId}, #{item.voiceName}, #{item.speechRate}, #{item.volume}, #{item.pitch}, NOW(), NOW())
+        </foreach>
+    </insert>
+
     <delete id="deleteByBreakingSentenceId" parameterType="long">
         DELETE FROM synthesis_settings WHERE breaking_sentence_id = #{breakingSentenceId}
     </delete>

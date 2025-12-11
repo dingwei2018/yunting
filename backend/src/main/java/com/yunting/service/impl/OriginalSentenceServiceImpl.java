@@ -186,6 +186,8 @@ public class OriginalSentenceServiceImpl implements OriginalSentenceService {
         settingDTO.setContent(breakingSentence.getContent() != null ? breakingSentence.getContent() : "");
         settingDTO.setVolume(synthesisSetting != null && synthesisSetting.getVolume() != null ? 
                 synthesisSetting.getVolume() : 0);
+        settingDTO.setSpeed(synthesisSetting != null && synthesisSetting.getSpeechRate() != null ? 
+                synthesisSetting.getSpeechRate() : 0);
         settingDTO.setVoiceId(synthesisSetting != null && synthesisSetting.getVoiceId() != null ? 
                 synthesisSetting.getVoiceId() : "");
 

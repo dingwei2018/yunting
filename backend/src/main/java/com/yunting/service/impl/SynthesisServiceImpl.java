@@ -19,7 +19,6 @@ import com.yunting.service.TtsCallbackHandlerService;
 import com.yunting.service.RocketMQTtsSynthesisService;
 import com.yunting.util.ValidationUtil;
 import com.yunting.constant.SynthesisStatus;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -33,9 +32,6 @@ import org.slf4j.LoggerFactory;
 public class SynthesisServiceImpl implements SynthesisService {
 
     private static final Logger logger = LoggerFactory.getLogger(SynthesisServiceImpl.class);
-    
-    // 默认 voiceId
-    private static final String DEFAULT_VOICE_ID = "c41f12c125f24c834ed3ae7c1fdae456";
 
     private final BreakingSentenceMapper breakingSentenceMapper;
     private final TaskMapper taskMapper;
@@ -85,76 +81,22 @@ public class SynthesisServiceImpl implements SynthesisService {
 
             // 4. 从 synthesis_settings 表中读取合成参数（虽然使用SSML，但保留这些参数以备后用）
             SynthesisSetting setting = synthesisSettingMapper.selectByBreakingSentenceId(breakingSentenceId);
-            String voiceId = null;
-            Integer speechRate = null;
-            Integer volume = null;
-            Integer pitch = null;
-            
-            if (setting != null) {
-                voiceId = setting.getVoiceId();
-                speechRate = setting.getSpeechRate();
-                volume = setting.getVolume();
-                pitch = setting.getPitch();
-            }
-
-            // 4.1 检查 volume 和 speechRate 是否为 0，如果是则设置默认值并更新到数据库
-            boolean needUpdateSetting = false;
-            
-            // 检查 volume 是否为 0，如果是则设置为默认值 140
-            if (volume != null && volume == 0) {
-                volume = 140; // 默认值
-                needUpdateSetting = true;
-            }
-            
-            // 检查 speechRate 是否为 0，如果是则设置为默认值 100
-            if (speechRate != null && speechRate == 0) {
-                speechRate = 100; // 默认值
-                needUpdateSetting = true;
-            }
-            
-            // 如果表中没有记录，也需要创建一条带默认值的记录
             if (setting == null) {
-                needUpdateSetting = true;
+                logger.warn("断句的合成参数配置不存在，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
+                return SynthesisStatus.Message.FAILED;
             }
-
-            // 如果需要更新，将默认值保存到 synthesis_settings 表
-            if (needUpdateSetting) {
-                if (setting == null) {
-                    // 如果表中没有记录，需要插入新记录
-                    setting = new SynthesisSetting();
-                    setting.setBreakingSentenceId(breakingSentenceId);
-                }
-                
-                // 设置 volume 的默认值（如果为 null 或 0）
-                if (volume == null || volume == 0) {
-                    volume = 140;
-                }
-                setting.setVolume(volume);
-                
-                // 设置 speechRate 的默认值（如果为 null 或 0）
-                if (speechRate == null || speechRate == 0) {
-                    speechRate = 100;
-                }
-                setting.setSpeechRate(speechRate);
-                
-                // 设置 voiceId（如果为 null，使用默认值）
-                if (setting.getVoiceId() == null || !StringUtils.hasText(setting.getVoiceId())) {
-                    String finalVoiceId = (voiceId != null && StringUtils.hasText(voiceId)) ? voiceId : DEFAULT_VOICE_ID;
-                    setting.setVoiceId(finalVoiceId);
-                    // 同时更新局部变量，用于后续请求华为云
-                    voiceId = finalVoiceId;
-                }
-                
-                // 设置 pitch（如果为 null，使用默认值 0，因为数据库字段不允许 null）
-                if (pitch == null) {
-                    pitch = 0;
-                }
-                setting.setPitch(pitch);
-                
-                // 更新或插入记录
-                synthesisSettingMapper.upsert(setting);
-                logger.info("更新默认值到synthesis_settings表，breakingSentenceId: {}, volume: {}, speechRate: {}, voiceId: {}", 
-                        breakingSentenceId, setting.getVolume(), setting.getSpeechRate(), setting.getVoiceId());
+            
+            String voiceId = setting.getVoiceId();
+            Integer speechRate = setting.getSpeechRate();
+            Integer volume = setting.getVolume();
+            Integer pitch = setting.getPitch();
+            
+            // 验证必要参数是否存在
+            if (!StringUtils.hasText(voiceId)) {
+                logger.warn("断句的音色ID为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
+                return SynthesisStatus.Message.FAILED;
             }
 
             // 5. 构建TTS合成请求消息
