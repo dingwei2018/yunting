@@ -19,14 +19,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * 华为云自定义读法服务实现
@@ -268,23 +267,89 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
             // 1. 查询现有的规则
             List<VocabularyConfig> existingConfigs = listVocabularyConfigs();
 
-            // 2. 批量删除所有现有规则
-            if (!existingConfigs.isEmpty()) {
-                // 收集所有需要删除的 vocabularyId
-                List<String> vocabularyIds = new ArrayList<>();
-                for (VocabularyConfig config : existingConfigs) {
-                    vocabularyIds.add(config.getVocabularyId());
+            // 2. 构建需要的规则Map（pattern -> ReadingRule），用于快速查找
+            Map<String, ReadingRule> requiredRuleMap = rules.stream()
+                    .collect(Collectors.toMap(
+                            ReadingRule::getPattern,
+                            rule -> rule,
+                            (v1, v2) -> v1  // 如果有重复，保留第一个
+                    ));
+
+            // 3. 构建云端规则Map（pattern -> VocabularyConfig），用于快速查找
+            Map<String, VocabularyConfig> cloudRuleMap = existingConfigs.stream()
+                    .collect(Collectors.toMap(
+                            VocabularyConfig::getPattern,
+                            config -> config,
+                            (v1, v2) -> v1  // 如果有重复，保留第一个
+                    ));
+
+            // 4. 找出需要删除的规则ID列表
+            List<String> vocabularyIdsToDelete = new ArrayList<>();
+            for (VocabularyConfig cloudConfig : existingConfigs) {
+                String pattern = cloudConfig.getPattern();
+                ReadingRule requiredRule = requiredRuleMap.get(pattern);
+
+                // 需要删除的情况：
+                // a) 云端存在但需要的规则中不存在（多余的规则）
+                // b) 云端存在且需要的规则中也存在，但内容不一致（需要更新的规则）
+                if (requiredRule == null) {
+                    // 情况a：多余的规则
+                    vocabularyIdsToDelete.add(cloudConfig.getVocabularyId());
+                    logger.debug("标记删除多余的规则，pattern: {}, vocabularyId: {}", pattern, cloudConfig.getVocabularyId());
+                } else {
+                    // 情况b：检查内容是否一致
+                    boolean isConsistent = Objects.equals(requiredRule.getRuleValue(), cloudConfig.getRuleValue())
+                            && Objects.equals(requiredRule.getRuleType(), cloudConfig.getRuleType());
+                    if (!isConsistent) {
+                        // 内容不一致，需要删除后重建
+                        vocabularyIdsToDelete.add(cloudConfig.getVocabularyId());
+                        logger.debug("标记删除需要更新的规则，pattern: {}, vocabularyId: {}", pattern, cloudConfig.getVocabularyId());
+                    } else {
+                        logger.debug("保留相同的规则，pattern: {}, vocabularyId: {}", pattern, cloudConfig.getVocabularyId());
+                    }
                 }
-                
-                // 批量删除（失败时抛出异常，中断整个更新流程）
-                deleteVocabularyConfigs(vocabularyIds);
-                logger.info("批量删除华为云自定义读法规则成功，共删除 {} 条规则", vocabularyIds.size());
             }
 
-            // 3. 创建新规则
-            for (ReadingRule rule : rules) {
+            // 5. 找出需要创建的规则列表
+            List<ReadingRule> rulesToCreate = new ArrayList<>();
+            for (ReadingRule requiredRule : rules) {
+                String pattern = requiredRule.getPattern();
+                VocabularyConfig cloudConfig = cloudRuleMap.get(pattern);
+
+                // 需要创建的情况：
+                // a) 需要的规则中存在但云端不存在（新增的规则）
+                // b) 需要的规则中存在且云端也存在但内容不一致（需要更新的规则，先删后建）
+                if (cloudConfig == null) {
+                    // 情况a：新增的规则
+                    rulesToCreate.add(requiredRule);
+                    logger.debug("标记创建新增的规则，pattern: {}", pattern);
+                } else {
+                    // 情况b：检查内容是否一致
+                    boolean isConsistent = Objects.equals(requiredRule.getRuleValue(), cloudConfig.getRuleValue())
+                            && Objects.equals(requiredRule.getRuleType(), cloudConfig.getRuleType());
+                    if (!isConsistent) {
+                        // 内容不一致，需要创建（删除已在步骤4中处理）
+                        rulesToCreate.add(requiredRule);
+                        logger.debug("标记创建需要更新的规则，pattern: {}", pattern);
+                    }
+                    // 如果内容一致，则不需要任何操作，已在步骤4中保留
+                }
+            }
+
+            // 6. 批量删除需要删除的规则
+            if (!vocabularyIdsToDelete.isEmpty()) {
+                deleteVocabularyConfigs(vocabularyIdsToDelete);
+                logger.info("批量删除华为云自定义读法规则成功，共删除 {} 条规则", vocabularyIdsToDelete.size());
+            } else {
+                logger.info("无需删除的规则");
+            }
+
+            // 7. 创建需要创建的规则
+            int createdCount = 0;
+            for (ReadingRule rule : rulesToCreate) {
                 try {
                     String vocabularyId = createVocabularyConfig(rule.getPattern(), rule.getRuleValue(), rule.getRuleType());
+                    createdCount++;
                     logger.info("创建华为云自定义读法规则成功，vocabularyId: {}, pattern: {}, ruleValue: {}, ruleType: {}", 
                             vocabularyId, rule.getPattern(), rule.getRuleValue(), rule.getRuleType());
                 } catch (Exception e) {
@@ -293,7 +358,9 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
                 }
             }
 
-            logger.info("批量更新华为云自定义读法规则完成，共处理 {} 条规则", rules.size());
+            int preservedCount = existingConfigs.size() - vocabularyIdsToDelete.size();
+            logger.info("批量更新华为云自定义读法规则完成，共处理 {} 条规则：删除 {} 条，创建 {} 条，保留 {} 条", 
+                    rules.size(), vocabularyIdsToDelete.size(), createdCount, preservedCount);
         } catch (Exception e) {
             logger.error("批量更新华为云自定义读法规则失败", e);
             throw new RuntimeException("批量更新华为云自定义读法规则失败: " + e.getMessage(), e);

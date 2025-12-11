@@ -1,7 +1,6 @@
 package com.yunting.service.impl;
 
 import com.yunting.dto.synthesis.TtsSynthesisRequest;
-import com.yunting.mapper.ReadingRuleApplicationMapper;
 import com.yunting.model.ReadingRule;
 import com.yunting.service.HuaweiCloudVocabularyService;
 import com.yunting.service.ReadingRuleAggregationService;
@@ -24,23 +23,14 @@ public class TtsSynthesisCoordinatorImpl implements TtsSynthesisCoordinator {
 
     private final ReadingRuleAggregationService readingRuleAggregationService;
     private final HuaweiCloudVocabularyService huaweiCloudVocabularyService;
-    private final ReadingRuleApplicationMapper readingRuleApplicationMapper;
 
     @Value("${huaweicloud.vocabulary.update.timeout:30}")
     private int vocabularyUpdateTimeout;
 
-    @Value("${tts.wait.processing.tasks.timeout:30}")
-    private int waitProcessingTasksTimeout;
-
-    @Value("${tts.wait.processing.tasks.poll.interval:1}")
-    private int waitProcessingTasksPollInterval;
-
     public TtsSynthesisCoordinatorImpl(ReadingRuleAggregationService readingRuleAggregationService,
-                                      HuaweiCloudVocabularyService huaweiCloudVocabularyService,
-                                      ReadingRuleApplicationMapper readingRuleApplicationMapper) {
+                                      HuaweiCloudVocabularyService huaweiCloudVocabularyService) {
         this.readingRuleAggregationService = readingRuleAggregationService;
         this.huaweiCloudVocabularyService = huaweiCloudVocabularyService;
-        this.readingRuleApplicationMapper = readingRuleApplicationMapper;
     }
 
     @Override
@@ -66,13 +56,7 @@ public class TtsSynthesisCoordinatorImpl implements TtsSynthesisCoordinator {
             if (!isConsistent) {
                 logger.info("阅读规则不一致，需要更新，breakingSentenceId: {}", breakingSentenceId);
                 
-                // 4. 等待所有进行中的TTS任务完成（排除当前断句）
-                boolean allCompleted = waitForProcessingTasks(waitProcessingTasksTimeout, breakingSentenceId);
-                if (!allCompleted) {
-                    logger.warn("等待进行中的TTS任务超时，但继续更新规则，breakingSentenceId: {}", breakingSentenceId);
-                }
-
-                // 5. 更新华为云上的规则
+                // 4. 更新华为云上的规则
                 try {
                     huaweiCloudVocabularyService.updateVocabularyConfigs(requiredRules);
                     logger.info("更新华为云自定义读法规则成功，breakingSentenceId: {}, 规则数量: {}", 
@@ -95,38 +79,6 @@ public class TtsSynthesisCoordinatorImpl implements TtsSynthesisCoordinator {
             // 不抛出异常，继续执行合成
             createTtsJobCallback.run();
         }
-    }
-
-    @Override
-    public boolean waitForProcessingTasks(int maxWaitSeconds, Long excludeBreakingSentenceId) {
-        logger.info("开始等待进行中的TTS任务完成，最大等待时间: {} 秒，排除断句ID: {}", 
-                maxWaitSeconds, excludeBreakingSentenceId);
-
-        long startTime = System.currentTimeMillis();
-        long maxWaitTime = maxWaitSeconds * 1000L;
-
-        while (System.currentTimeMillis() - startTime < maxWaitTime) {
-            int processingCount = readingRuleApplicationMapper.selectProcessingBreakingSentencesCount(excludeBreakingSentenceId);
-            
-            if (processingCount == 0) {
-                logger.info("所有进行中的TTS任务已完成（已排除当前断句）");
-                return true;
-            }
-
-            logger.debug("还有 {} 个进行中的TTS任务（已排除当前断句），继续等待...", processingCount);
-
-            try {
-                Thread.sleep(waitProcessingTasksPollInterval * 1000L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                logger.warn("等待进行中的TTS任务被中断");
-                return false;
-            }
-        }
-
-        int remainingCount = readingRuleApplicationMapper.selectProcessingBreakingSentencesCount(excludeBreakingSentenceId);
-        logger.warn("等待进行中的TTS任务超时，仍有 {} 个任务在进行中（已排除当前断句）", remainingCount);
-        return false;
     }
 
     /**
