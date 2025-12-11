@@ -191,14 +191,13 @@ public class SynthesisConfigServiceImpl implements SynthesisConfigService {
                 if (StringUtils.hasText(content)) {
                     List<PolyphonicSetting> polyphonicSettings = new ArrayList<>();
                     for (SynthesisSetConfigRequest.PhonemeConfig phonemeConfig : config.getPhonemeList()) {
-                        if (phonemeConfig.getLocation() != null && phonemeConfig.getLocation() >= 0 
-                                && phonemeConfig.getLocation() < content.length()
+                        if (phonemeConfig.getLocation() != null && phonemeConfig.getLocation() > 0 
+                                && phonemeConfig.getLocation() <= content.length()
                                 && StringUtils.hasText(phonemeConfig.getPh())) {
                             PolyphonicSetting polyphonicSetting = new PolyphonicSetting();
                             polyphonicSetting.setBreakingSentenceId(breakingSentenceId);
-                            // 从content的location位置提取字符
-                            String word = content.substring(phonemeConfig.getLocation(), 
-                                    Math.min(phonemeConfig.getLocation() + 1, content.length()));
+                            // 从content的location前一个位置提取字符
+                            String word = content.substring(phonemeConfig.getLocation() - 1, phonemeConfig.getLocation());
                             polyphonicSetting.setWord(word);
                             polyphonicSetting.setPosition(phonemeConfig.getLocation());
                             polyphonicSetting.setPronunciation(phonemeConfig.getPh());

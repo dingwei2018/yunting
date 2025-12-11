@@ -249,12 +249,12 @@ public final class SsmlRenderer {
     }
 
     private static String buildPhonemeTag(PolyphonicSettingRequest poly, String content) {
-        if (poly.getPosition() == null || poly.getPosition() >= content.length()) {
+        if (poly.getPosition() == null || poly.getPosition() <= 0 || poly.getPosition() > content.length()) {
             return "";
         }
         String character = poly.getCharacter();
         if (!StringUtils.hasText(character)) {
-            character = content.substring(poly.getPosition(), Math.min(poly.getPosition() + 1, content.length()));
+            character = content.substring(poly.getPosition() - 1, poly.getPosition());
         }
         String pronunciation = poly.getPronunciation();
         if (!StringUtils.hasText(pronunciation)) {
@@ -447,11 +447,16 @@ public final class SsmlRenderer {
 
             // 处理标记前的文本
             if (markPos > currentPos[0] && markPos <= content.length()) {
-                // 逐字符处理，以便正确管理 prosody 标签
-                for (int i = currentPos[0]; i < markPos; i++) {
-                    updateProsodyTags.run();
-                    ssml.append(escape(String.valueOf(content.charAt(i))));
-                    currentPos[0] = i + 1;
+                // 对于PHONEME_CONFIG，需要跳过它要标记的字符（location-1位置的字符）
+                // 所以只输出到markPos-1，避免重复输出
+                int endPos = mark.getType() == MarkType.PHONEME_CONFIG ? markPos - 1 : markPos;
+                if (endPos > currentPos[0]) {
+                    // 逐字符处理，以便正确管理 prosody 标签
+                    for (int i = currentPos[0]; i < endPos; i++) {
+                        updateProsodyTags.run();
+                        ssml.append(escape(String.valueOf(content.charAt(i))));
+                        currentPos[0] = i + 1;
+                    }
                 }
             }
 
@@ -467,8 +472,9 @@ public final class SsmlRenderer {
                     break;
                 case PHONEME_CONFIG:
                     ssml.append(buildPhonemeTagFromConfig((SynthesisSetConfigRequest.PhonemeConfig) mark.getData(), content));
-                    // phoneme 只标记单个字符
-                    currentPos[0] = markPos + 1;
+                    // phoneme 标签已经包含了 location-1 位置的字符，所以 currentPos 更新为 markPos
+                    // 这样后续文本会从 markPos 位置继续输出
+                    currentPos[0] = markPos;
                     break;
             }
         }
@@ -502,11 +508,10 @@ public final class SsmlRenderer {
     }
 
     private static String buildPhonemeTagFromConfig(SynthesisSetConfigRequest.PhonemeConfig phonemeConfig, String content) {
-        if (phonemeConfig.getLocation() == null || phonemeConfig.getLocation() >= content.length()) {
+        if (phonemeConfig.getLocation() == null || phonemeConfig.getLocation() <= 0 || phonemeConfig.getLocation() > content.length()) {
             return "";
         }
-        String character = content.substring(phonemeConfig.getLocation(), 
-                Math.min(phonemeConfig.getLocation() + 1, content.length()));
+        String character = content.substring(phonemeConfig.getLocation() - 1, phonemeConfig.getLocation());
         String pronunciation = phonemeConfig.getPh();
         if (!StringUtils.hasText(pronunciation)) {
             return escape(character);

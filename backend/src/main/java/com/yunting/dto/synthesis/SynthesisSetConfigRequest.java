@@ -322,10 +322,6 @@ public class SynthesisSetConfigRequest {
          */
         private Long ruleId;
         /**
-         * 匹配模式（注意：文档中是 "partern" 不是 "pattern"）
-         */
-        private String partern;
-        /**
          * 是否开启
          */
         private Boolean isOpen;
@@ -336,14 +332,6 @@ public class SynthesisSetConfigRequest {
 
         public void setRuleId(Long ruleId) {
             this.ruleId = ruleId;
-        }
-
-        public String getPartern() {
-            return partern;
-        }
-
-        public void setPartern(String partern) {
-            this.partern = partern;
         }
 
         public Boolean getIsOpen() {
