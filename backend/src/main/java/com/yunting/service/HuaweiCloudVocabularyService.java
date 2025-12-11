@@ -1,5 +1,6 @@
 package com.yunting.service;
 
+import com.huaweicloud.sdk.metastudio.v1.model.ListTtscVocabularyConfigsResponse;
 import com.yunting.model.ReadingRule;
 
 import java.util.List;
@@ -13,18 +14,26 @@ public interface HuaweiCloudVocabularyService {
     /**
      * 查询华为云上的自定义读法规则列表
      * 
-     * @return 规则列表，每个规则包含vocabularyId、pattern、ruleValue
+     * @return 规则列表，每个规则包含vocabularyId、pattern、ruleValue、ruleType
      */
     List<VocabularyConfig> listVocabularyConfigs();
+
+    /**
+     * 查询华为云上的自定义读法规则列表（返回原始响应）
+     * 
+     * @return 华为云SDK的原始响应对象
+     */
+    ListTtscVocabularyConfigsResponse listVocabularyConfigsResponse();
 
     /**
      * 创建自定义读法规则
      * 
      * @param pattern 匹配模式
      * @param ruleValue 规则值
+     * @param ruleType 规则类型：1-数字英文，2-音标调整，3-专有词汇
      * @return vocabularyId
      */
-    String createVocabularyConfig(String pattern, String ruleValue);
+    String createVocabularyConfig(String pattern, String ruleValue, Integer ruleType);
 
     /**
      * 删除自定义读法规则
@@ -32,6 +41,13 @@ public interface HuaweiCloudVocabularyService {
      * @param vocabularyId 规则ID
      */
     void deleteVocabularyConfig(String vocabularyId);
+
+    /**
+     * 批量删除自定义读法规则
+     * 
+     * @param vocabularyIds 规则ID列表
+     */
+    void deleteVocabularyConfigs(List<String> vocabularyIds);
 
     /**
      * 批量更新自定义读法规则（先删除所有，再创建新的）
@@ -47,6 +63,7 @@ public interface HuaweiCloudVocabularyService {
         private String vocabularyId;
         private String pattern;
         private String ruleValue;
+        private Integer ruleType;
 
         public String getVocabularyId() {
             return vocabularyId;
@@ -70,6 +87,14 @@ public interface HuaweiCloudVocabularyService {
 
         public void setRuleValue(String ruleValue) {
             this.ruleValue = ruleValue;
+        }
+
+        public Integer getRuleType() {
+            return ruleType;
+        }
+
+        public void setRuleType(Integer ruleType) {
+            this.ruleType = ruleType;
         }
     }
 }

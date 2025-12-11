@@ -3,16 +3,12 @@ package com.yunting.config;
 import org.apache.rocketmq.client.apis.ClientConfiguration;
 import org.apache.rocketmq.client.apis.ClientConfigurationBuilder;
 import org.apache.rocketmq.client.apis.ClientServiceProvider;
-import org.apache.rocketmq.client.apis.consumer.FilterExpression;
-import org.apache.rocketmq.client.apis.consumer.FilterExpressionType;
 import org.apache.rocketmq.client.apis.producer.Producer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.util.Collections;
 
 /**
  * RocketMQ 配置类
@@ -49,6 +45,7 @@ public class RocketMQConfig {
     /**
      * 创建 RocketMQ Producer Bean（共用）
      * 用于发送 TTS_CALLBACK 和 TTS_SYNTHESIS 两种类型的消息
+     * 注意：如果使用顺序消息，需要确保 Topic 支持 FIFO 消息类型
      */
     @Bean(destroyMethod = "close")
     public Producer ttsProducer() {

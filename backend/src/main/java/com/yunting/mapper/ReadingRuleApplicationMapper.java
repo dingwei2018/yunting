@@ -97,11 +97,12 @@ public interface ReadingRuleApplicationMapper {
     List<Long> selectBreakingSentenceRules(@Param("breakingSentenceId") Long breakingSentenceId);
 
     /**
-     * 查询所有进行中的断句数量（synthesis_status=1）
+     * 查询所有进行中的断句数量（synthesis_status=1），排除指定的断句ID
      *
+     * @param excludeBreakingSentenceId 要排除的断句ID（可为null，表示不排除）
      * @return 进行中的断句数量
      */
-    int selectProcessingBreakingSentencesCount();
+    int selectProcessingBreakingSentencesCount(@Param("excludeBreakingSentenceId") Long excludeBreakingSentenceId);
 
     /**
      * 根据fromId和type查询应用记录

@@ -66,8 +66,8 @@ public class TtsSynthesisCoordinatorImpl implements TtsSynthesisCoordinator {
             if (!isConsistent) {
                 logger.info("阅读规则不一致，需要更新，breakingSentenceId: {}", breakingSentenceId);
                 
-                // 4. 等待所有进行中的TTS任务完成
-                boolean allCompleted = waitForProcessingTasks(waitProcessingTasksTimeout);
+                // 4. 等待所有进行中的TTS任务完成（排除当前断句）
+                boolean allCompleted = waitForProcessingTasks(waitProcessingTasksTimeout, breakingSentenceId);
                 if (!allCompleted) {
                     logger.warn("等待进行中的TTS任务超时，但继续更新规则，breakingSentenceId: {}", breakingSentenceId);
                 }
@@ -98,21 +98,22 @@ public class TtsSynthesisCoordinatorImpl implements TtsSynthesisCoordinator {
     }
 
     @Override
-    public boolean waitForProcessingTasks(int maxWaitSeconds) {
-        logger.info("开始等待进行中的TTS任务完成，最大等待时间: {} 秒", maxWaitSeconds);
+    public boolean waitForProcessingTasks(int maxWaitSeconds, Long excludeBreakingSentenceId) {
+        logger.info("开始等待进行中的TTS任务完成，最大等待时间: {} 秒，排除断句ID: {}", 
+                maxWaitSeconds, excludeBreakingSentenceId);
 
         long startTime = System.currentTimeMillis();
         long maxWaitTime = maxWaitSeconds * 1000L;
 
         while (System.currentTimeMillis() - startTime < maxWaitTime) {
-            int processingCount = readingRuleApplicationMapper.selectProcessingBreakingSentencesCount();
+            int processingCount = readingRuleApplicationMapper.selectProcessingBreakingSentencesCount(excludeBreakingSentenceId);
             
             if (processingCount == 0) {
-                logger.info("所有进行中的TTS任务已完成");
+                logger.info("所有进行中的TTS任务已完成（已排除当前断句）");
                 return true;
             }
 
-            logger.debug("还有 {} 个进行中的TTS任务，继续等待...", processingCount);
+            logger.debug("还有 {} 个进行中的TTS任务（已排除当前断句），继续等待...", processingCount);
 
             try {
                 Thread.sleep(waitProcessingTasksPollInterval * 1000L);
@@ -123,13 +124,14 @@ public class TtsSynthesisCoordinatorImpl implements TtsSynthesisCoordinator {
             }
         }
 
-        int remainingCount = readingRuleApplicationMapper.selectProcessingBreakingSentencesCount();
-        logger.warn("等待进行中的TTS任务超时，仍有 {} 个任务在进行中", remainingCount);
+        int remainingCount = readingRuleApplicationMapper.selectProcessingBreakingSentencesCount(excludeBreakingSentenceId);
+        logger.warn("等待进行中的TTS任务超时，仍有 {} 个任务在进行中（已排除当前断句）", remainingCount);
         return false;
     }
 
     /**
      * 对比规则是否一致
+     * 只有当 type、key、value 完全一样时，才认为一致
      * 
      * @param requiredRules 需要的规则列表
      * @param cloudConfigs 华为云上的规则列表
@@ -137,37 +139,52 @@ public class TtsSynthesisCoordinatorImpl implements TtsSynthesisCoordinator {
      */
     private boolean compareRules(List<ReadingRule> requiredRules, 
                                 List<HuaweiCloudVocabularyService.VocabularyConfig> cloudConfigs) {
-        // 构建需要的规则Map（pattern -> ruleValue）
-        Map<String, String> requiredRuleMap = requiredRules.stream()
+        // 构建需要的规则Map（pattern -> ReadingRule），用于完整对比
+        Map<String, ReadingRule> requiredRuleMap = requiredRules.stream()
                 .collect(Collectors.toMap(
                         ReadingRule::getPattern,
-                        ReadingRule::getRuleValue,
+                        rule -> rule,
                         (v1, v2) -> v1  // 如果有重复，保留第一个
                 ));
 
-        // 构建华为云上的规则Map（pattern -> ruleValue）
-        Map<String, String> cloudRuleMap = cloudConfigs.stream()
+        // 构建华为云上的规则Map（pattern -> VocabularyConfig），用于完整对比
+        Map<String, HuaweiCloudVocabularyService.VocabularyConfig> cloudRuleMap = cloudConfigs.stream()
                 .collect(Collectors.toMap(
                         HuaweiCloudVocabularyService.VocabularyConfig::getPattern,
-                        HuaweiCloudVocabularyService.VocabularyConfig::getRuleValue,
+                        config -> config,
                         (v1, v2) -> v1  // 如果有重复，保留第一个
                 ));
 
-        // 对比两个Map是否一致
+        // 对比两个Map的数量是否一致
         if (requiredRuleMap.size() != cloudRuleMap.size()) {
             logger.debug("规则数量不一致，需要的: {}, 华为云上的: {}", 
                     requiredRuleMap.size(), cloudRuleMap.size());
             return false;
         }
 
-        for (Map.Entry<String, String> entry : requiredRuleMap.entrySet()) {
+        // 对比每个规则的 type、key、value 是否完全一致
+        for (Map.Entry<String, ReadingRule> entry : requiredRuleMap.entrySet()) {
             String pattern = entry.getKey();
-            String requiredValue = entry.getValue();
-            String cloudValue = cloudRuleMap.get(pattern);
+            ReadingRule requiredRule = entry.getValue();
+            HuaweiCloudVocabularyService.VocabularyConfig cloudConfig = cloudRuleMap.get(pattern);
 
-            if (!Objects.equals(requiredValue, cloudValue)) {
+            // 如果云端没有这个pattern，不一致
+            if (cloudConfig == null) {
+                logger.debug("规则不存在于云端，pattern: {}", pattern);
+                return false;
+            }
+
+            // 对比 ruleValue
+            if (!Objects.equals(requiredRule.getRuleValue(), cloudConfig.getRuleValue())) {
                 logger.debug("规则值不一致，pattern: {}, 需要的: {}, 华为云上的: {}", 
-                        pattern, requiredValue, cloudValue);
+                        pattern, requiredRule.getRuleValue(), cloudConfig.getRuleValue());
+                return false;
+            }
+
+            // 对比 ruleType
+            if (!Objects.equals(requiredRule.getRuleType(), cloudConfig.getRuleType())) {
+                logger.debug("规则类型不一致，pattern: {}, 需要的: {}, 华为云上的: {}", 
+                        pattern, requiredRule.getRuleType(), cloudConfig.getRuleType());
                 return false;
             }
         }

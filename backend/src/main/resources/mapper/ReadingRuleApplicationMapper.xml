@@ -134,6 +134,9 @@
         SELECT COUNT(*)
         FROM breaking_sentences
         WHERE synthesis_status = 1
+        <if test="excludeBreakingSentenceId != null">
+            AND breaking_sentence_id != #{excludeBreakingSentenceId}
+        </if>
     </select>
 
     <select id="selectByFromIdAndType" resultType="map">

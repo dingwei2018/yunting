@@ -40,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * TTS合成请求消费者
  * 从RocketMQ消费TTS合成请求，限流5次/秒调用华为云API
+ * 支持顺序消息消费，确保所有合成请求按顺序执行
  */
 @Component
 public class TtsSynthesisConsumer {
@@ -121,11 +122,11 @@ public class TtsSynthesisConsumer {
                             .setConsumerGroup(rocketMQConfig.getTtsSynthesisConsumerGroup())
                             .setSubscriptionExpressions(Collections.singletonMap(
                                     rocketMQConfig.getTtsTopic(), filterExpression))
-                            .setConsumptionThreadCount(1)  // 单线程消费，保证顺序
+                            .setConsumptionThreadCount(1)  // 单线程消费，保证顺序消息的顺序处理
                             .setMessageListener(messageListener)
                             .build();
                     
-                    logger.info("TTS合成请求监听器注册成功，Topic: {}, ConsumerGroup: {}", 
+                    logger.info("TTS合成请求监听器注册成功（顺序消息模式），Topic: {}, ConsumerGroup: {}, 消费线程数: 1", 
                             rocketMQConfig.getTtsTopic(), 
                             rocketMQConfig.getTtsSynthesisConsumerGroup());
                     return;

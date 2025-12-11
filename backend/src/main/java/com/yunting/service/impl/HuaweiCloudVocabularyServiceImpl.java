@@ -6,8 +6,9 @@ import com.huaweicloud.sdk.core.exception.ConnectionException;
 import com.huaweicloud.sdk.core.exception.RequestTimeoutException;
 import com.huaweicloud.sdk.core.exception.ServiceResponseException;
 import com.huaweicloud.sdk.metastudio.v1.MetaStudioClient;
+import com.huaweicloud.sdk.metastudio.v1.model.*;
 import com.huaweicloud.sdk.metastudio.v1.region.MetaStudioRegion;
-import java.lang.reflect.Method;
+import com.yunting.constant.ReadingRuleType;
 import com.yunting.model.ReadingRule;
 import com.yunting.service.HuaweiCloudVocabularyService;
 import jakarta.annotation.PostConstruct;
@@ -55,11 +56,14 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
     @Value("${huaweicloud.project-id:}")
     private String huaweiCloudProjectId;
 
+    @Value("${huaweicloud.vocabulary.group-id:2c9084d59ac09773019b0d2662021381}")
+    private String huaweiCloudVocabularyGroupId;
+
     /**
      * 请求类型
      */
     private enum RequestType {
-        LIST, CREATE, DELETE
+        LIST, CREATE, DELETE, BATCH_DELETE
     }
 
     /**
@@ -69,7 +73,9 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
         RequestType type;
         String pattern;
         String ruleValue;
+        Integer ruleType;
         String vocabularyId;
+        List<String> vocabularyIds;
         java.util.concurrent.CompletableFuture<Object> future;
 
         VocabularyRequest(RequestType type) {
@@ -125,11 +131,15 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
                     request.future.complete(configs);
                     break;
                 case CREATE:
-                    String vocabularyId = doCreateVocabularyConfig(client, request.pattern, request.ruleValue);
+                    String vocabularyId = doCreateVocabularyConfig(client, request.pattern, request.ruleValue, request.ruleType);
                     request.future.complete(vocabularyId);
                     break;
                 case DELETE:
                     doDeleteVocabularyConfig(client, request.vocabularyId);
+                    request.future.complete(null);
+                    break;
+                case BATCH_DELETE:
+                    doBatchDeleteVocabularyConfigs(client, request.vocabularyIds);
                     request.future.complete(null);
                     break;
             }
@@ -170,16 +180,51 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
     }
 
     @Override
-    public String createVocabularyConfig(String pattern, String ruleValue) {
+    public ListTtscVocabularyConfigsResponse listVocabularyConfigsResponse() {
+        try {
+            // 创建华为云客户端
+            ICredential auth = new BasicCredentials()
+                    .withProjectId(huaweiCloudProjectId)
+                    .withAk(huaweiCloudAk)
+                    .withSk(huaweiCloudSk);
+            MetaStudioClient client = MetaStudioClient.newBuilder()
+                    .withCredential(auth)
+                    .withRegion(MetaStudioRegion.valueOf(huaweiCloudRegion))
+                    .build();
+
+            // 构建请求
+            ListTtscVocabularyConfigsRequest request = new ListTtscVocabularyConfigsRequest();
+            ListTtscVocabularyConfigsResponse response = client.listTtscVocabularyConfigs(request);
+            logger.info("查询华为云自定义读法规则列表成功");
+            return response;
+        } catch (ConnectionException e) {
+            logger.error("查询华为云自定义读法规则列表连接异常", e);
+            throw new RuntimeException("查询华为云自定义读法规则列表连接异常: " + e.getMessage(), e);
+        } catch (RequestTimeoutException e) {
+            logger.error("查询华为云自定义读法规则列表请求超时", e);
+            throw new RuntimeException("查询华为云自定义读法规则列表请求超时: " + e.getMessage(), e);
+        } catch (ServiceResponseException e) {
+            logger.error("查询华为云自定义读法规则列表服务响应异常，HTTP状态码={}, 请求ID={}, 错误码={}, 错误信息={}", 
+                    e.getHttpStatusCode(), e.getRequestId(), e.getErrorCode(), e.getErrorMsg());
+            throw new RuntimeException("查询华为云自定义读法规则列表服务响应异常: " + e.getErrorMsg(), e);
+        } catch (Exception e) {
+            logger.error("查询华为云自定义读法规则列表异常", e);
+            throw new RuntimeException("查询华为云自定义读法规则列表异常: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public String createVocabularyConfig(String pattern, String ruleValue, Integer ruleType) {
         VocabularyRequest request = new VocabularyRequest(RequestType.CREATE);
         request.pattern = pattern;
         request.ruleValue = ruleValue;
+        request.ruleType = ruleType;
         requestQueue.offer(request);
 
         try {
             return (String) request.future.get(30, TimeUnit.SECONDS);
         } catch (Exception e) {
-            logger.error("创建华为云自定义读法规则失败，pattern: {}, ruleValue: {}", pattern, ruleValue, e);
+            logger.error("创建华为云自定义读法规则失败，pattern: {}, ruleValue: {}, ruleType: {}", pattern, ruleValue, ruleType, e);
             throw new RuntimeException("创建华为云自定义读法规则失败: " + e.getMessage(), e);
         }
     }
@@ -199,30 +244,52 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
     }
 
     @Override
+    public void deleteVocabularyConfigs(List<String> vocabularyIds) {
+        if (vocabularyIds == null || vocabularyIds.isEmpty()) {
+            logger.warn("批量删除华为云自定义读法规则：vocabularyIds为空，跳过删除");
+            return;
+        }
+
+        VocabularyRequest request = new VocabularyRequest(RequestType.BATCH_DELETE);
+        request.vocabularyIds = vocabularyIds;
+        requestQueue.offer(request);
+
+        try {
+            request.future.get(30, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            logger.error("批量删除华为云自定义读法规则失败，vocabularyIds: {}", vocabularyIds, e);
+            throw new RuntimeException("批量删除华为云自定义读法规则失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public void updateVocabularyConfigs(List<ReadingRule> rules) {
         try {
             // 1. 查询现有的规则
             List<VocabularyConfig> existingConfigs = listVocabularyConfigs();
 
-            // 2. 删除所有现有规则
-            for (VocabularyConfig config : existingConfigs) {
-                try {
-                    deleteVocabularyConfig(config.getVocabularyId());
-                    logger.info("删除华为云自定义读法规则，vocabularyId: {}", config.getVocabularyId());
-                } catch (Exception e) {
-                    logger.warn("删除华为云自定义读法规则失败，vocabularyId: {}，继续处理", config.getVocabularyId(), e);
+            // 2. 批量删除所有现有规则
+            if (!existingConfigs.isEmpty()) {
+                // 收集所有需要删除的 vocabularyId
+                List<String> vocabularyIds = new ArrayList<>();
+                for (VocabularyConfig config : existingConfigs) {
+                    vocabularyIds.add(config.getVocabularyId());
                 }
+                
+                // 批量删除（失败时抛出异常，中断整个更新流程）
+                deleteVocabularyConfigs(vocabularyIds);
+                logger.info("批量删除华为云自定义读法规则成功，共删除 {} 条规则", vocabularyIds.size());
             }
 
             // 3. 创建新规则
             for (ReadingRule rule : rules) {
                 try {
-                    String vocabularyId = createVocabularyConfig(rule.getPattern(), rule.getRuleValue());
-                    logger.info("创建华为云自定义读法规则成功，vocabularyId: {}, pattern: {}, ruleValue: {}", 
-                            vocabularyId, rule.getPattern(), rule.getRuleValue());
+                    String vocabularyId = createVocabularyConfig(rule.getPattern(), rule.getRuleValue(), rule.getRuleType());
+                    logger.info("创建华为云自定义读法规则成功，vocabularyId: {}, pattern: {}, ruleValue: {}, ruleType: {}", 
+                            vocabularyId, rule.getPattern(), rule.getRuleValue(), rule.getRuleType());
                 } catch (Exception e) {
-                    logger.error("创建华为云自定义读法规则失败，pattern: {}, ruleValue: {}，继续处理", 
-                            rule.getPattern(), rule.getRuleValue(), e);
+                    logger.error("创建华为云自定义读法规则失败，pattern: {}, ruleValue: {}, ruleType: {}，继续处理", 
+                            rule.getPattern(), rule.getRuleValue(), rule.getRuleType(), e);
                 }
             }
 
@@ -238,55 +305,31 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
      */
     private List<VocabularyConfig> doListVocabularyConfigs(MetaStudioClient client) {
         try {
-            // 使用反射调用API（因为SDK版本可能不同）
-            Class<?> requestClass = Class.forName("com.huaweicloud.sdk.metastudio.v1.model.ListTtscVocabularyConfigsRequest");
-            Object request = requestClass.getDeclaredConstructor().newInstance();
-            
-            // 尝试设置projectId（如果方法存在）
-            try {
-                requestClass.getMethod("withProjectId", String.class).invoke(request, huaweiCloudProjectId);
-            } catch (NoSuchMethodException e) {
-                // 如果方法不存在，跳过（projectId可能在credential中已设置）
-                logger.debug("ListTtscVocabularyConfigsRequest没有withProjectId方法，跳过");
-            }
 
-            Method listMethod = client.getClass().getMethod("listTtscVocabularyConfigs", requestClass);
-            Object response = listMethod.invoke(client, request);
-            
+            // 构建请求
+            ListTtscVocabularyConfigsRequest request = new ListTtscVocabularyConfigsRequest();
+            //设置规则组ID，不设置的话，无法查到读法配置
+            request.setGroupId(huaweiCloudVocabularyGroupId);
+            ListTtscVocabularyConfigsResponse response = client.listTtscVocabularyConfigs(request);
+
+            // 获取响应体，然后获取vocabularyConfigs列表
             List<VocabularyConfig> configs = new ArrayList<>();
-            
-            // 获取响应体
-            Object responseBody = null;
-            try {
-                Method getBody = response.getClass().getMethod("getBody");
-                responseBody = getBody.invoke(response);
-            } catch (NoSuchMethodException e) {
-                // 如果getBody方法不存在，尝试直接获取
-                logger.debug("响应对象没有getBody方法，尝试直接访问");
-            }
-            
-            if (responseBody != null) {
-                // 获取vocabularyConfigs列表
-                try {
-                    Method getVocabularyConfigs = responseBody.getClass().getMethod("getVocabularyConfigs");
-                    @SuppressWarnings("unchecked")
-                    List<Object> vocabularyConfigs = (List<Object>) getVocabularyConfigs.invoke(responseBody);
+            if (response.getData() != null) {
+                // 遍历vocabularyConfigs列表
+                for (com.huaweicloud.sdk.metastudio.v1.model.VocabularyConfig info : response.getData()) {
+                    VocabularyConfig config = new VocabularyConfig();
+                    config.setVocabularyId(info.getId());
+                    config.setPattern(info.getKey());
+                    config.setRuleValue(info.getValue());
                     
-                    if (vocabularyConfigs != null) {
-                        for (Object info : vocabularyConfigs) {
-                            VocabularyConfig config = new VocabularyConfig();
-                            Method getVocabularyId = info.getClass().getMethod("getVocabularyId");
-                            Method getPattern = info.getClass().getMethod("getPattern");
-                            Method getRuleValue = info.getClass().getMethod("getRuleValue");
-                            
-                            config.setVocabularyId((String) getVocabularyId.invoke(info));
-                            config.setPattern((String) getPattern.invoke(info));
-                            config.setRuleValue((String) getRuleValue.invoke(info));
-                            configs.add(config);
-                        }
+                    // 提取并转换华为云类型为本地ruleType
+                    if (info.getType() != null) {
+                        String huaweiCloudType = info.getType();
+                        Integer ruleType = ReadingRuleType.getCodeFromHuaweiCloudType(huaweiCloudType);
+                        config.setRuleType(ruleType);
                     }
-                } catch (Exception e) {
-                    logger.warn("解析响应体失败，可能API结构不同", e);
+                    
+                    configs.add(config);
                 }
             }
 
@@ -311,68 +354,50 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
     /**
      * 执行创建自定义读法规则
      */
-    private String doCreateVocabularyConfig(MetaStudioClient client, String pattern, String ruleValue) {
+    private String doCreateVocabularyConfig(MetaStudioClient client, String pattern, String ruleValue, Integer ruleType) {
         try {
-            // 使用反射调用API
-            Class<?> requestClass = Class.forName("com.huaweicloud.sdk.metastudio.v1.model.CreateTtscVocabularyConfigsRequest");
-            Class<?> bodyClass = Class.forName("com.huaweicloud.sdk.metastudio.v1.model.CreateTtscVocabularyConfigsRequestBody");
+            // 构建请求
+            CreateTtscVocabularyConfigsRequest request = new CreateTtscVocabularyConfigsRequest();
+            SaveTtscVocabularyConfigsRequestBody body = new SaveTtscVocabularyConfigsRequestBody();
             
-            Object request = requestClass.getDeclaredConstructor().newInstance();
-            Object body = bodyClass.getDeclaredConstructor().newInstance();
-            
-            // 尝试设置projectId（如果方法存在）
-            try {
-                requestClass.getMethod("withProjectId", String.class).invoke(request, huaweiCloudProjectId);
-            } catch (NoSuchMethodException e) {
-                logger.debug("CreateTtscVocabularyConfigsRequest没有withProjectId方法，跳过");
+            // 使用枚举获取华为云类型
+            String huaweiCloudType = ReadingRuleType.getHuaweiCloudType(ruleType);
+            if (huaweiCloudType == null) {
+                throw new IllegalArgumentException("不支持的ruleType: " + ruleType + "，支持的值为：1-数字英文，2-音标调整，3-专有词汇");
             }
             
             // 设置body参数
-            bodyClass.getMethod("withPattern", String.class).invoke(body, pattern);
-            bodyClass.getMethod("withRuleValue", String.class).invoke(body, ruleValue);
-            requestClass.getMethod("withBody", bodyClass).invoke(request, body);
-
-            Method createMethod = client.getClass().getMethod("createTtscVocabularyConfigs", requestClass);
-            Object response = createMethod.invoke(client, request);
+            body.withKey(pattern)
+                .withValue(ruleValue)
+                .withType(SaveTtscVocabularyConfigsRequestBody.TypeEnum.fromValue(huaweiCloudType))
+                .withGroupId(huaweiCloudVocabularyGroupId);
+            request.withBody(body);
+            
+            // 调用SDK API
+            CreateTtscVocabularyConfigsResponse response = client.createTtscVocabularyConfigs(request);
             
             // 获取vocabularyId
-            String vocabularyId = null;
-            try {
-                Method getVocabularyId = response.getClass().getMethod("getVocabularyId");
-                vocabularyId = (String) getVocabularyId.invoke(response);
-            } catch (NoSuchMethodException e) {
-                // 尝试从body中获取
-                try {
-                    Method getBody = response.getClass().getMethod("getBody");
-                    Object responseBody = getBody.invoke(response);
-                    if (responseBody != null) {
-                        Method getVocabularyIdFromBody = responseBody.getClass().getMethod("getVocabularyId");
-                        vocabularyId = (String) getVocabularyIdFromBody.invoke(responseBody);
-                    }
-                } catch (Exception ex) {
-                    logger.warn("无法从响应中获取vocabularyId", ex);
-                }
-            }
+            String vocabularyId = response.getId();
             
             if (!StringUtils.hasText(vocabularyId)) {
                 throw new RuntimeException("创建华为云自定义读法规则失败：未返回vocabularyId");
             }
 
-            logger.info("创建华为云自定义读法规则成功，vocabularyId: {}, pattern: {}, ruleValue: {}", 
-                    vocabularyId, pattern, ruleValue);
+            logger.info("创建华为云自定义读法规则成功，vocabularyId: {}, pattern: {}, ruleValue: {}, ruleType: {}", 
+                    vocabularyId, pattern, ruleValue, ruleType);
             return vocabularyId;
         } catch (ConnectionException e) {
-            logger.error("创建华为云自定义读法规则连接异常，pattern: {}, ruleValue: {}", pattern, ruleValue, e);
+            logger.error("创建华为云自定义读法规则连接异常，pattern: {}, ruleValue: {}, ruleType: {}", pattern, ruleValue, ruleType, e);
             throw new RuntimeException("创建华为云自定义读法规则连接异常: " + e.getMessage(), e);
         } catch (RequestTimeoutException e) {
-            logger.error("创建华为云自定义读法规则请求超时，pattern: {}, ruleValue: {}", pattern, ruleValue, e);
+            logger.error("创建华为云自定义读法规则请求超时，pattern: {}, ruleValue: {}, ruleType: {}", pattern, ruleValue, ruleType, e);
             throw new RuntimeException("创建华为云自定义读法规则请求超时: " + e.getMessage(), e);
         } catch (ServiceResponseException e) {
-            logger.error("创建华为云自定义读法规则服务响应异常，pattern: {}, ruleValue: {}, HTTP状态码={}, 错误码={}, 错误信息={}", 
-                    pattern, ruleValue, e.getHttpStatusCode(), e.getErrorCode(), e.getErrorMsg());
+            logger.error("创建华为云自定义读法规则服务响应异常，pattern: {}, ruleValue: {}, ruleType: {}, HTTP状态码={}, 错误码={}, 错误信息={}", 
+                    pattern, ruleValue, ruleType, e.getHttpStatusCode(), e.getErrorCode(), e.getErrorMsg());
             throw new RuntimeException("创建华为云自定义读法规则服务响应异常: " + e.getErrorMsg(), e);
         } catch (Exception e) {
-            logger.error("创建华为云自定义读法规则异常，pattern: {}, ruleValue: {}", pattern, ruleValue, e);
+            logger.error("创建华为云自定义读法规则异常，pattern: {}, ruleValue: {}, ruleType: {}", pattern, ruleValue, ruleType, e);
             throw new RuntimeException("创建华为云自定义读法规则异常: " + e.getMessage(), e);
         }
     }
@@ -382,22 +407,20 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
      */
     private void doDeleteVocabularyConfig(MetaStudioClient client, String vocabularyId) {
         try {
-            // 使用反射调用API
-            Class<?> requestClass = Class.forName("com.huaweicloud.sdk.metastudio.v1.model.DeleteTtscVocabularyConfigsRequest");
-            Object request = requestClass.getDeclaredConstructor().newInstance();
+            // 构建请求
+            DeleteTtscVocabularyConfigsRequest request = new DeleteTtscVocabularyConfigsRequest();
+            DeleteTtscVocabularyConfigsRequestBody body = new DeleteTtscVocabularyConfigsRequestBody();
             
-            // 尝试设置projectId（如果方法存在）
-            try {
-                requestClass.getMethod("withProjectId", String.class).invoke(request, huaweiCloudProjectId);
-            } catch (NoSuchMethodException e) {
-                logger.debug("DeleteTtscVocabularyConfigsRequest没有withProjectId方法，跳过");
-            }
+            // 创建ID列表
+            List<String> idList = new ArrayList<>();
+            idList.add(vocabularyId);
             
-            // 设置vocabularyId
-            requestClass.getMethod("withVocabularyId", String.class).invoke(request, vocabularyId);
-
-            Method deleteMethod = client.getClass().getMethod("deleteTtscVocabularyConfigs", requestClass);
-            deleteMethod.invoke(client, request);
+            // 设置请求体
+            body.withId(idList);
+            request.withBody(body);
+            
+            // 调用SDK API
+            client.deleteTtscVocabularyConfigs(request);
 
             logger.info("删除华为云自定义读法规则成功，vocabularyId: {}", vocabularyId);
         } catch (ConnectionException e) {
@@ -413,6 +436,44 @@ public class HuaweiCloudVocabularyServiceImpl implements HuaweiCloudVocabularySe
         } catch (Exception e) {
             logger.error("删除华为云自定义读法规则异常，vocabularyId: {}", vocabularyId, e);
             throw new RuntimeException("删除华为云自定义读法规则异常: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 执行批量删除自定义读法规则
+     */
+    private void doBatchDeleteVocabularyConfigs(MetaStudioClient client, List<String> vocabularyIds) {
+        if (vocabularyIds == null || vocabularyIds.isEmpty()) {
+            logger.warn("批量删除华为云自定义读法规则：vocabularyIds为空，跳过删除");
+            return;
+        }
+
+        try {
+            // 构建请求
+            DeleteTtscVocabularyConfigsRequest request = new DeleteTtscVocabularyConfigsRequest();
+            DeleteTtscVocabularyConfigsRequestBody body = new DeleteTtscVocabularyConfigsRequestBody();
+            
+            // 设置请求体，直接使用传入的ID列表
+            body.withId(vocabularyIds);
+            request.withBody(body);
+            
+            // 调用SDK API
+            client.deleteTtscVocabularyConfigs(request);
+
+            logger.info("批量删除华为云自定义读法规则成功，共删除 {} 条规则", vocabularyIds.size());
+        } catch (ConnectionException e) {
+            logger.error("批量删除华为云自定义读法规则连接异常，vocabularyIds: {}", vocabularyIds, e);
+            throw new RuntimeException("批量删除华为云自定义读法规则连接异常: " + e.getMessage(), e);
+        } catch (RequestTimeoutException e) {
+            logger.error("批量删除华为云自定义读法规则请求超时，vocabularyIds: {}", vocabularyIds, e);
+            throw new RuntimeException("批量删除华为云自定义读法规则请求超时: " + e.getMessage(), e);
+        } catch (ServiceResponseException e) {
+            logger.error("批量删除华为云自定义读法规则服务响应异常，vocabularyIds: {}, HTTP状态码={}, 错误码={}, 错误信息={}", 
+                    vocabularyIds, e.getHttpStatusCode(), e.getErrorCode(), e.getErrorMsg());
+            throw new RuntimeException("批量删除华为云自定义读法规则服务响应异常: " + e.getErrorMsg(), e);
+        } catch (Exception e) {
+            logger.error("批量删除华为云自定义读法规则异常，vocabularyIds: {}", vocabularyIds, e);
+            throw new RuntimeException("批量删除华为云自定义读法规则异常: " + e.getMessage(), e);
         }
     }
 }

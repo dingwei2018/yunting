@@ -21,7 +21,8 @@ public interface TtsSynthesisCoordinator {
      * 等待所有进行中的TTS任务完成
      * 
      * @param maxWaitSeconds 最大等待时间（秒）
+     * @param excludeBreakingSentenceId 要排除的断句ID（当前正在处理的断句，可为null）
      * @return 是否所有任务都已完成
      */
-    boolean waitForProcessingTasks(int maxWaitSeconds);
+    boolean waitForProcessingTasks(int maxWaitSeconds, Long excludeBreakingSentenceId);
 }

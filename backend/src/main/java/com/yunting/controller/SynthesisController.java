@@ -11,6 +11,8 @@ import com.yunting.dto.synthesis.SynthesisSetConfigRequest;
 import com.yunting.dto.synthesis.SynthesisTaskRequest;
 import com.yunting.dto.synthesis.TaskSynthesisStatusDTO;
 import com.yunting.dto.synthesis.TtsCallbackRequest;
+import com.huaweicloud.sdk.metastudio.v1.model.ListTtscVocabularyConfigsResponse;
+import com.yunting.service.HuaweiCloudVocabularyService;
 import com.yunting.service.RocketMQTtsCallbackService;
 import com.yunting.service.SynthesisService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,11 +32,14 @@ public class SynthesisController {
 
     private final SynthesisService synthesisService;
     private final RocketMQTtsCallbackService rocketMQTtsCallbackService;
+    private final HuaweiCloudVocabularyService huaweiCloudVocabularyService;
 
     public SynthesisController(SynthesisService synthesisService,
-                                RocketMQTtsCallbackService rocketMQTtsCallbackService) {
+                                RocketMQTtsCallbackService rocketMQTtsCallbackService,
+                                HuaweiCloudVocabularyService huaweiCloudVocabularyService) {
         this.synthesisService = synthesisService;
         this.rocketMQTtsCallbackService = rocketMQTtsCallbackService;
+        this.huaweiCloudVocabularyService = huaweiCloudVocabularyService;
     }
 
     /**
@@ -163,6 +168,18 @@ public class SynthesisController {
         ValidationUtil.notNull(taskid, "taskid不能为空");
         TaskSynthesisStatusDTO result = synthesisService.getTaskStatus(taskid);
         return ResponseUtil.success(result);
+    }
+
+    /**
+     * 查询华为云阅读规则列表
+     * 查询华为云上的自定义读法规则列表，返回华为云SDK的原始响应格式
+     * 
+     * @return 华为云SDK的原始响应，包含阅读规则列表
+     */
+    @GetMapping("/listVocabularyConfigs")
+    public ApiResponse<ListTtscVocabularyConfigsResponse> listVocabularyConfigs() {
+        ListTtscVocabularyConfigsResponse response = huaweiCloudVocabularyService.listVocabularyConfigsResponse();
+        return ResponseUtil.success(response);
     }
 }
 
