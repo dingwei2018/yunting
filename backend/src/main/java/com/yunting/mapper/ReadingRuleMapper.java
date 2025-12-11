@@ -19,9 +19,13 @@ public interface ReadingRuleMapper {
 
     ReadingRule selectByRuleTypeAndPattern(@Param("ruleType") Integer ruleType, @Param("pattern") String pattern);
 
+    ReadingRule selectByPattern(@Param("pattern") String pattern);
+
     List<ReadingRule> selectPage(@Param("taskId") Long taskId, @Param("ruleType") Integer ruleType, @Param("offset") int offset, @Param("limit") int limit);
 
     long count(@Param("taskId") Long taskId, @Param("ruleType") Integer ruleType);
+
+    int deleteById(@Param("ruleId") Long ruleId);
 }
 
 

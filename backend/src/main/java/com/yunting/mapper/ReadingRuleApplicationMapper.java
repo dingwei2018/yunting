@@ -102,6 +102,15 @@ public interface ReadingRuleApplicationMapper {
      * @return 进行中的断句数量
      */
     int selectProcessingBreakingSentencesCount();
+
+    /**
+     * 根据fromId和type查询应用记录
+     *
+     * @param fromId 来源ID（taskId或breakingSentenceId）
+     * @param type 类型（1-任务级，2-断句级）
+     * @return 应用记录列表，每个Map包含rule_id和is_open
+     */
+    List<Map<String, Object>> selectByFromIdAndType(@Param("fromId") Long fromId, @Param("type") Integer type);
 }
 
 

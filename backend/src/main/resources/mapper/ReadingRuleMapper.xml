@@ -52,6 +52,12 @@
         LIMIT 1
     </select>
 
+    <select id="selectByPattern" resultMap="ReadingRuleResultMap">
+        SELECT * FROM reading_rules
+        WHERE pattern = #{pattern}
+        LIMIT 1
+    </select>
+
     <select id="selectPage" resultMap="ReadingRuleResultMap">
         SELECT *
         FROM reading_rules
@@ -75,6 +81,10 @@
             <!-- taskId暂时不支持，因为reading_rules表没有taskId字段 -->
         </where>
     </select>
+
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM reading_rules WHERE rule_id = #{ruleId}
+    </delete>
 
 </mapper>
 

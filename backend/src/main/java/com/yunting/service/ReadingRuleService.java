@@ -22,7 +22,9 @@ public interface ReadingRuleService {
 
     ReadingRuleListPageResponseDTO getReadingRuleList(Long taskId, Integer ruleType, Integer page, Integer pageSize);
 
-    MatchingFieldListResponseDTO getMatchingFieldListFromText(String text);
+    MatchingFieldListResponseDTO getMatchingFieldListFromText(Long taskId, Long breakingSentenceId, String content);
+
+    void deleteReadingRule(Long ruleId);
 }
 
 

@@ -5,9 +5,11 @@ import com.yunting.common.ResponseUtil;
 import com.yunting.dto.reading.MatchingFieldListResponseDTO;
 import com.yunting.dto.reading.ReadingRuleCreateRequest;
 import com.yunting.dto.reading.ReadingRuleCreateResponseDTO;
+import com.yunting.dto.reading.ReadingRuleDeleteRequest;
 import com.yunting.dto.reading.ReadingRuleListPageResponseDTO;
 import com.yunting.dto.reading.ReadingRuleSetGlobalSettingRequest;
 import com.yunting.service.ReadingRuleService;
+import com.yunting.util.ValidationUtil;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -80,13 +82,33 @@ public class ReadingRuleController {
      * 获取文本中符合规则的字段列表
      * 从文本中提取符合阅读规则的字段列表
      *
-     * @param text 文本内容（必选）
+     * @param taskId 任务ID（必选）
+     * @param breakingSentenceId 断句ID（可选）
+     * @param content 文本内容（必选）
      * @return 匹配的字段列表响应，包含匹配字段总数和字段列表（包含规则ID、位置、模式和开关状态）
      */
     @GetMapping("/getMatchingFieldListFromText")
     public ApiResponse<MatchingFieldListResponseDTO> getMatchingFieldListFromText(
-            @RequestParam(value = "text") String text) {
-        MatchingFieldListResponseDTO data = readingRuleService.getMatchingFieldListFromText(text);
+            @RequestParam(value = "taskId") Long taskId,
+            @RequestParam(value = "breakingSentenceId", required = false) Long breakingSentenceId,
+            @RequestParam(value = "content") String content) {
+        MatchingFieldListResponseDTO data = readingRuleService.getMatchingFieldListFromText(taskId, breakingSentenceId, content);
         return ResponseUtil.success(data);
+    }
+
+    /**
+     * 删除全局阅读规则
+     * 删除指定的阅读规则及其关联的应用记录
+     *
+     * @param request 删除请求，包含 ruleId
+     * @return 删除结果，成功返回"删除成功"
+     */
+    @PostMapping("/delete")
+    public ApiResponse<String> deleteReadingRule(
+            @RequestBody ReadingRuleDeleteRequest request) {
+        ValidationUtil.notNull(request, "请求参数不能为空");
+        ValidationUtil.notNull(request.getRuleId(), "ruleId不能为空");
+        readingRuleService.deleteReadingRule(request.getRuleId());
+        return ResponseUtil.success("删除成功");
     }
 }

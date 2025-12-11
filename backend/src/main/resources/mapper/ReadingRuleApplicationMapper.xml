@@ -136,6 +136,13 @@
         WHERE synthesis_status = 1
     </select>
 
+    <select id="selectByFromIdAndType" resultType="map">
+        SELECT rule_id as rule_id, is_open as is_open
+        FROM reading_rule_applications
+        WHERE from_id = #{fromId}
+          AND type = #{type}
+    </select>
+
 </mapper>
 
 

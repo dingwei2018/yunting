@@ -30,6 +30,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,11 +59,10 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
         ValidationUtil.notNull(request, "请求参数不能为空");
         validateCreateRequest(request);
         
-        // 检查是否存在相同的 ruleType 和 pattern 的记录
-        ReadingRule existingRule = readingRuleMapper.selectByRuleTypeAndPattern(
-                request.getRuleType(), request.getPattern());
+        // 检查是否存在相同的 pattern 的记录
+        ReadingRule existingRule = readingRuleMapper.selectByPattern(request.getPattern());
         if (existingRule != null) {
-            throw new BusinessException(10400, "阅读规则已存在");
+            throw new BusinessException(10400, "pattern已存在");
         }
         
         ReadingRule rule = new ReadingRule();
@@ -266,19 +266,48 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
     }
 
     @Override
-    public MatchingFieldListResponseDTO getMatchingFieldListFromText(String text) {
+    public MatchingFieldListResponseDTO getMatchingFieldListFromText(Long taskId, Long breakingSentenceId, String content) {
         MatchingFieldListResponseDTO response = new MatchingFieldListResponseDTO();
         
-        if (!StringUtils.hasText(text)) {
+        // 参数验证
+        ValidationUtil.notNull(taskId, "taskId不能为空");
+        
+        if (!StringUtils.hasText(content)) {
             response.setTotal(0);
             response.setFieldList(Collections.emptyList());
             return response;
         }
 
-        // 获取所有阅读规范
+        // 1. 如果breakingSentenceId有值，查询type=2且from_id=breakingSentenceId的记录（断句级）
+        Map<Long, Boolean> breakingSentenceRuleMap = new HashMap<>();
+        if (breakingSentenceId != null) {
+            List<Map<String, Object>> breakingSentenceRecords = readingRuleApplicationMapper.selectByFromIdAndType(
+                    breakingSentenceId, ReadingRuleApplicationType.Type.BREAKING_SENTENCE);
+            for (Map<String, Object> record : breakingSentenceRecords) {
+                Long ruleId = ((Number) record.get("rule_id")).longValue();
+                Boolean isOpen = convertToBoolean(record.get("is_open"));
+                breakingSentenceRuleMap.put(ruleId, isOpen);
+            }
+        }
+
+        // 2. 查询type=1且from_id=taskId的记录（任务级）
+        Map<Long, Boolean> taskRuleMap = new HashMap<>();
+        List<Map<String, Object>> taskRecords = readingRuleApplicationMapper.selectByFromIdAndType(
+                taskId, ReadingRuleApplicationType.Type.TASK);
+        for (Map<String, Object> record : taskRecords) {
+            Long ruleId = ((Number) record.get("rule_id")).longValue();
+            Boolean isOpen = convertToBoolean(record.get("is_open"));
+            taskRuleMap.put(ruleId, isOpen);
+        }
+
+        // 3. 合并查询结果：如果同一个ruleId在两者都有记录，以breakingSentenceId的记录为准（优先级更高）
+        Map<Long, Boolean> finalRuleMap = new HashMap<>(taskRuleMap);
+        finalRuleMap.putAll(breakingSentenceRuleMap); // breakingSentenceId的记录会覆盖taskId的记录
+
+        // 4. 获取所有阅读规范
         List<ReadingRule> rules = readingRuleMapper.selectList();
         
-        // 遍历所有规则，匹配文本
+        // 5. 遍历所有规则，匹配文本
         List<MatchingFieldDTO> fieldList = new ArrayList<>();
         for (ReadingRule rule : rules) {
             String pattern = rule.getPattern();
@@ -289,7 +318,7 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
             // 查找所有匹配位置（支持多个匹配）
             int startIndex = 0;
             while (true) {
-                int index = text.indexOf(pattern, startIndex);
+                int index = content.indexOf(pattern, startIndex);
                 if (index < 0) {
                     break;
                 }
@@ -298,6 +327,9 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
                 field.setRuleId(rule.getRuleId());
                 field.setLocation(index);
                 field.setPattern(pattern);
+                // 设置isOpen状态：有记录用记录值，无记录默认true
+                Boolean isOpen = finalRuleMap.get(rule.getRuleId());
+                field.setIsOpen(isOpen != null ? isOpen : true);
                 fieldList.add(field);
                 
                 // 移动到下一个可能的位置
@@ -326,6 +358,28 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
         }
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteReadingRule(Long ruleId) {
+        // 1. 参数验证
+        ValidationUtil.notNull(ruleId, "ruleId不能为空");
+        
+        // 2. 验证阅读规则是否存在
+        ReadingRule rule = readingRuleMapper.selectById(ruleId);
+        if (rule == null) {
+            throw new BusinessException(10404, "阅读规则不存在");
+        }
+        
+        // 3. 先删除 reading_rule_applications 表中对应的记录
+        readingRuleApplicationMapper.deleteByRuleId(ruleId);
+        
+        // 4. 再删除 reading_rules 表中的记录
+        int deleted = readingRuleMapper.deleteById(ruleId);
+        if (deleted == 0) {
+            throw new BusinessException(10500, "删除阅读规则失败");
+        }
+    }
+
     private ReadingRuleDTO toDTO(ReadingRule rule) {
         ReadingRuleDTO dto = new ReadingRuleDTO();
         dto.setRuleId(rule.getRuleId());
@@ -334,6 +388,30 @@ public class ReadingRuleServiceImpl implements ReadingRuleService {
         dto.setRuleValue(rule.getRuleValue());
         dto.setCreatedAt(rule.getCreatedAt());
         return dto;
+    }
+
+    /**
+     * 将对象转换为Boolean类型
+     * 支持Boolean、Number（0/1）、String（"0"/"1"）等类型
+     *
+     * @param value 待转换的值
+     * @return Boolean值，如果为null则返回true（默认值）
+     */
+    private Boolean convertToBoolean(Object value) {
+        if (value == null) {
+            return true; // 默认值为true
+        }
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() == 1;
+        }
+        if (value instanceof String) {
+            String str = ((String) value).trim();
+            return "1".equals(str) || "true".equalsIgnoreCase(str);
+        }
+        return true; // 默认值为true
     }
 }
 
