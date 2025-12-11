@@ -90,9 +90,9 @@ services:
       - "8080:8080"
     environment:
       # 数据库配置
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/yunting?characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
-      SPRING_DATASOURCE_USERNAME: yunting
-      SPRING_DATASOURCE_PASSWORD: yunting
+      SPRING_DATASOURCE_URL: jdbc:mysql://rm-bp1r0053n0bcd4pmlim.mysql.rds.aliyuncs.com/yunting?characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: SAAS_gaijin@2019
       
       # 日志配置
       LOG_HOME: /app/logs
