@@ -87,8 +87,8 @@ public class ReadingRuleController {
      * @param content 文本内容（必选）
      * @return 匹配的字段列表响应，包含匹配字段总数和字段列表（包含规则ID、位置、模式和开关状态）
      */
-    @GetMapping("/getMatchingFieldListFromText")
-    public ApiResponse<MatchingFieldListResponseDTO> getMatchingFieldListFromText(
+    @GetMapping("/getMatchingFieldListFromContent")
+    public ApiResponse<MatchingFieldListResponseDTO> getMatchingFieldListFromContent(
             @RequestParam(value = "taskId") Long taskId,
             @RequestParam(value = "breakingSentenceId", required = false) Long breakingSentenceId,
             @RequestParam(value = "content") String content) {
