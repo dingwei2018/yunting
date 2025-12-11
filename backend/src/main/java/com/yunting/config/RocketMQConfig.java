@@ -28,8 +28,8 @@ public class RocketMQConfig {
     @Value("${rocketmq.tts-callback.consumer-group}")
     private String ttsCallbackConsumerGroup;
     
-    @Value("${rocketmq.tts-callback.consumption-thread-count:5}")
-    private int consumptionThreadCount;
+    @Value("${rocketmq.tts-callback.message-group:TTS_CALLBACK_ORDERED}")
+    private String ttsCallbackMessageGroup;
     
     @Value("${rocketmq.tts-synthesis.consumer-group}")
     private String ttsSynthesisConsumerGroup;
@@ -89,17 +89,17 @@ public class RocketMQConfig {
     }
     
     /**
+     * 获取 TTS 回调消息组配置（用于顺序消息）
+     */
+    public String getTtsCallbackMessageGroup() {
+        return ttsCallbackMessageGroup;
+    }
+    
+    /**
      * 获取 TTS 合成请求 Consumer Group
      */
     public String getTtsSynthesisConsumerGroup() {
         return ttsSynthesisConsumerGroup;
-    }
-    
-    /**
-     * 获取消费线程数
-     */
-    public int getConsumptionThreadCount() {
-        return consumptionThreadCount;
     }
     
     /**

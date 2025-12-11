@@ -23,8 +23,8 @@ import java.util.Collections;
 
 
 /**
- * TTS回调消息消费者
- * 从RocketMQ消费TTS回调消息，并发处理数限制为5
+ * TTS回调消息消费者（顺序消息）
+ * 从RocketMQ消费TTS回调消息，使用顺序消息模式，确保所有回调消息按全局顺序处理
  */
 @Component
 public class TtsCallbackConsumer {
@@ -72,19 +72,18 @@ public class TtsCallbackConsumer {
                     };
                     
                     // 创建 PushConsumer，在 builder 中设置 MessageListener
+                    // 顺序消息使用单线程消费，RocketMQ会自动处理
                     consumer = rocketMQConfig.getProvider().newPushConsumerBuilder()
                             .setClientConfiguration(configuration)
                             .setConsumerGroup(rocketMQConfig.getTtsCallbackConsumerGroup())
                             .setSubscriptionExpressions(Collections.singletonMap(
                                     rocketMQConfig.getTtsTopic(), filterExpression))  // 使用共用的 Topic
-                            .setConsumptionThreadCount(rocketMQConfig.getConsumptionThreadCount())  // 设置并发线程数为5
                             .setMessageListener(messageListener)  // 在 builder 中设置监听器
                             .build();
                     
-                    logger.info("TTS回调消息监听器注册成功，Topic: {}, ConsumerGroup: {}, 并发线程数: {}", 
+                    logger.info("TTS回调消息监听器注册成功（顺序消息模式），Topic: {}, ConsumerGroup: {}", 
                             rocketMQConfig.getTtsTopic(), 
-                            rocketMQConfig.getTtsCallbackConsumerGroup(),
-                            rocketMQConfig.getConsumptionThreadCount());
+                            rocketMQConfig.getTtsCallbackConsumerGroup());
                     return; // 成功启动，退出循环
                     
                 } catch (Exception e) {
@@ -110,7 +109,7 @@ public class TtsCallbackConsumer {
     
     /**
      * 处理单条消息
-     * RocketMQ 会根据配置的并发线程数自动控制并发，最多5个线程同时处理
+     * 顺序消息模式下，RocketMQ 会保证消息按顺序处理
      */
     private ConsumeResult processMessage(MessageView messageView) {
         String messageId = messageView.getMessageId().toString();
