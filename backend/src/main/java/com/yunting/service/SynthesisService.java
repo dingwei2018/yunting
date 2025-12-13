@@ -53,6 +53,15 @@ public interface SynthesisService {
      * @return 任务合成状态DTO，包含进度、统计信息和音频URL列表
      */
     TaskSynthesisStatusDTO getTaskStatus(Long taskId);
+
+    /**
+     * 取消断句合成任务
+     * 只能取消PROCESSING状态的合成任务，取消后将状态重置为PENDING并清空jobId
+     * 
+     * @param breakingSentenceId 断句ID
+     * @return 取消结果消息
+     */
+    String cancelSynthesis(Long breakingSentenceId);
 }
 
 

@@ -58,6 +58,21 @@ public class SynthesisController {
     }
 
     /**
+     * 取消断句合成
+     * 只能取消PROCESSING状态的合成任务，取消后将状态重置为PENDING并清空jobId
+     *
+     * @param request 取消请求，包含 breakingSentenceId
+     * @return 取消结果，成功返回"取消成功"
+     */
+    @PostMapping("/cancelBreakingSentence")
+    public ApiResponse<String> cancelBreakingSentence(
+            @RequestBody com.yunting.dto.synthesis.CancelSynthesisRequest request) {
+        ValidationUtil.notNull(request.getBreakingSentenceId(), "breakingSentenceId不能为空");
+        String result = synthesisService.cancelSynthesis(request.getBreakingSentenceId());
+        return ResponseUtil.success(result);
+    }
+
+    /**
      * 合成拆句
      * 合成或重新合成拆句下的所有断句
      *

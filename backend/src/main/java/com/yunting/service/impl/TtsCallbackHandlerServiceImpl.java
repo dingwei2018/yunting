@@ -61,7 +61,8 @@ public class TtsCallbackHandlerServiceImpl implements TtsCallbackHandlerService 
         // 根据job_id从数据库查找对应的breaking_sentence_id
         BreakingSentence sentence = breakingSentenceMapper.selectByJobId(jobId);
         if (sentence == null) {
-            logger.warn("未找到job_id对应的断句，jobId: {}", jobId);
+            // 如果根据jobId查询不到断句记录，说明任务已被取消（jobId已被清空），忽略回调
+            logger.info("未找到job_id对应的断句，任务可能已被取消，忽略回调，jobId: {}", jobId);
             return;
         }
 

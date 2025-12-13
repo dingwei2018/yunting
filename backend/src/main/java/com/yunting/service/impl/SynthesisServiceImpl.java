@@ -267,6 +267,72 @@ public class SynthesisServiceImpl implements SynthesisService {
     public TaskSynthesisStatusDTO getTaskStatus(Long taskId) {
         return synthesisStatusService.getTaskStatus(taskId);
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public String cancelSynthesis(Long breakingSentenceId) {
+        try {
+            // 1. 参数验证：确保断句ID不为空
+            ValidationUtil.notNull(breakingSentenceId, "breakingSentenceId不能为空");
+            
+            // 2. 查询断句信息，验证断句是否存在
+            BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
+            if (sentence == null) {
+                logger.warn("断句不存在，无法取消，breakingSentenceId: {}", breakingSentenceId);
+                throw new com.yunting.exception.BusinessException(10404, "断句不存在");
+            }
+            
+            // 3. 验证当前状态是否为PROCESSING
+            Integer currentStatus = sentence.getSynthesisStatus();
+            if (currentStatus == null || currentStatus != SynthesisStatus.Status.PROCESSING) {
+                logger.warn("只能取消正在合成中的任务，当前状态: {}, breakingSentenceId: {}", 
+                        currentStatus, breakingSentenceId);
+                throw new com.yunting.exception.BusinessException(10400, "只能取消正在合成中的任务，当前状态: " + 
+                        (currentStatus == null ? "未知" : getStatusText(currentStatus)));
+            }
+            
+            // 4. 先清空jobId（如果存在），这样回调时查询不到记录就会忽略
+            String originalJobId = sentence.getJobId();
+            if (StringUtils.hasText(originalJobId)) {
+                breakingSentenceMapper.updateJobId(breakingSentenceId, null);
+            }
+            
+            // 5. 将状态重置为PENDING，清空audioUrl和audioDuration
+            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.PENDING, null, null);
+            
+            if (StringUtils.hasText(originalJobId)) {
+                logger.info("已取消断句合成任务，已清空jobId，breakingSentenceId: {}, 原jobId: {}", 
+                        breakingSentenceId, originalJobId);
+            } else {
+                logger.info("已取消断句合成任务，breakingSentenceId: {}", breakingSentenceId);
+            }
+            
+            return "取消成功";
+        } catch (com.yunting.exception.BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("取消断句合成任务时发生异常，breakingSentenceId: {}", breakingSentenceId, e);
+            throw new com.yunting.exception.BusinessException(10500, "取消合成任务失败: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 获取状态文本描述
+     */
+    private String getStatusText(int status) {
+        switch (status) {
+            case 0:
+                return "未合成";
+            case 1:
+                return "合成中";
+            case 2:
+                return "已合成";
+            case 3:
+                return "合成失败";
+            default:
+                return "未知状态(" + status + ")";
+        }
+    }
 }
 
 
