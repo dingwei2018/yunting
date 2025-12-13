@@ -316,6 +316,135 @@ public class SynthesisServiceImpl implements SynthesisService {
         }
     }
     
+    @Override
+    public String cancelOriginalSentence(Long originalSentenceId) {
+        try {
+            // 1. 参数验证：确保拆句ID不为空
+            ValidationUtil.notNull(originalSentenceId, "originalSentenceId不能为空");
+            
+            // 2. 查询该拆句下的所有断句
+            List<BreakingSentence> sentences = breakingSentenceMapper.selectByOriginalSentenceId(originalSentenceId);
+            if (sentences.isEmpty()) {
+                logger.warn("拆句下没有断句，无法取消，originalSentenceId: {}", originalSentenceId);
+                return "拆句下没有断句";
+            }
+            
+            // 3. 过滤出状态为PROCESSING的断句
+            List<BreakingSentence> processingSentences = sentences.stream()
+                    .filter(s -> s.getSynthesisStatus() != null && 
+                            s.getSynthesisStatus() == SynthesisStatus.Status.PROCESSING)
+                    .collect(java.util.stream.Collectors.toList());
+            
+            if (processingSentences.isEmpty()) {
+                logger.info("拆句下没有正在合成中的断句，originalSentenceId: {}", originalSentenceId);
+                return "拆句下没有正在合成中的断句";
+            }
+            
+            // 4. 对每个PROCESSING状态的断句调用cancelSynthesis，收集结果
+            int successCount = 0;
+            int failCount = 0;
+            List<String> failureMessages = new ArrayList<>();
+            
+            for (BreakingSentence sentence : processingSentences) {
+                try {
+                    cancelSynthesis(sentence.getBreakingSentenceId());
+                    successCount++;
+                } catch (com.yunting.exception.BusinessException e) {
+                    failCount++;
+                    failureMessages.add("断句ID " + sentence.getBreakingSentenceId() + "：" + e.getMessage());
+                    logger.warn("取消断句失败，breakingSentenceId: {}, 错误: {}", 
+                            sentence.getBreakingSentenceId(), e.getMessage());
+                } catch (Exception e) {
+                    failCount++;
+                    failureMessages.add("断句ID " + sentence.getBreakingSentenceId() + "：" + e.getMessage());
+                    logger.error("取消断句时发生异常，breakingSentenceId: {}", 
+                            sentence.getBreakingSentenceId(), e);
+                }
+            }
+            
+            // 5. 返回汇总信息
+            String result = String.format("已取消%d个断句", successCount);
+            if (failCount > 0) {
+                result += String.format("，%d个失败：%s", failCount, String.join("；", failureMessages));
+            }
+            logger.info("取消拆句合成任务完成，originalSentenceId: {}, 成功: {}, 失败: {}", 
+                    originalSentenceId, successCount, failCount);
+            return result;
+        } catch (Exception e) {
+            logger.error("取消拆句合成任务时发生异常，originalSentenceId: {}", originalSentenceId, e);
+            throw new com.yunting.exception.BusinessException(10500, "取消拆句合成任务失败: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public String cancelTask(Long taskId) {
+        try {
+            // 1. 参数验证：确保任务ID不为空
+            ValidationUtil.notNull(taskId, "taskId不能为空");
+            
+            // 2. 验证任务是否存在
+            Task task = taskMapper.selectById(taskId);
+            if (task == null) {
+                logger.warn("任务不存在，无法取消，taskId: {}", taskId);
+                throw new com.yunting.exception.BusinessException(10404, "任务不存在");
+            }
+            
+            // 3. 查询该任务下的所有断句
+            List<BreakingSentence> sentences = breakingSentenceMapper.selectByTaskId(taskId);
+            if (sentences.isEmpty()) {
+                logger.warn("任务下没有断句，无法取消，taskId: {}", taskId);
+                return "任务下没有断句";
+            }
+            
+            // 4. 过滤出状态为PROCESSING的断句
+            List<BreakingSentence> processingSentences = sentences.stream()
+                    .filter(s -> s.getSynthesisStatus() != null && 
+                            s.getSynthesisStatus() == SynthesisStatus.Status.PROCESSING)
+                    .collect(java.util.stream.Collectors.toList());
+            
+            if (processingSentences.isEmpty()) {
+                logger.info("任务下没有正在合成中的断句，taskId: {}", taskId);
+                return "任务下没有正在合成中的断句";
+            }
+            
+            // 5. 对每个PROCESSING状态的断句调用cancelSynthesis，收集结果
+            int successCount = 0;
+            int failCount = 0;
+            List<String> failureMessages = new ArrayList<>();
+            
+            for (BreakingSentence sentence : processingSentences) {
+                try {
+                    cancelSynthesis(sentence.getBreakingSentenceId());
+                    successCount++;
+                } catch (com.yunting.exception.BusinessException e) {
+                    failCount++;
+                    failureMessages.add("断句ID " + sentence.getBreakingSentenceId() + "：" + e.getMessage());
+                    logger.warn("取消断句失败，breakingSentenceId: {}, 错误: {}", 
+                            sentence.getBreakingSentenceId(), e.getMessage());
+                } catch (Exception e) {
+                    failCount++;
+                    failureMessages.add("断句ID " + sentence.getBreakingSentenceId() + "：" + e.getMessage());
+                    logger.error("取消断句时发生异常，breakingSentenceId: {}", 
+                            sentence.getBreakingSentenceId(), e);
+                }
+            }
+            
+            // 6. 返回汇总信息
+            String result = String.format("已取消%d个断句", successCount);
+            if (failCount > 0) {
+                result += String.format("，%d个失败：%s", failCount, String.join("；", failureMessages));
+            }
+            logger.info("取消任务合成任务完成，taskId: {}, 成功: {}, 失败: {}", 
+                    taskId, successCount, failCount);
+            return result;
+        } catch (com.yunting.exception.BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("取消任务合成任务时发生异常，taskId: {}", taskId, e);
+            throw new com.yunting.exception.BusinessException(10500, "取消任务合成任务失败: " + e.getMessage());
+        }
+    }
+    
     /**
      * 获取状态文本描述
      */

@@ -73,6 +73,21 @@ public class SynthesisController {
     }
 
     /**
+     * 取消拆句合成
+     * 取消拆句下所有PROCESSING状态的断句合成任务
+     *
+     * @param request 取消请求，包含 originalSentenceId
+     * @return 取消结果，包含成功和失败的数量统计
+     */
+    @PostMapping("/cancelOriginalSentence")
+    public ApiResponse<String> cancelOriginalSentence(
+            @RequestBody com.yunting.dto.synthesis.CancelOriginalSentenceRequest request) {
+        ValidationUtil.notNull(request.getOriginalSentenceId(), "originalSentenceId不能为空");
+        String result = synthesisService.cancelOriginalSentence(request.getOriginalSentenceId());
+        return ResponseUtil.success(result);
+    }
+
+    /**
      * 合成拆句
      * 合成或重新合成拆句下的所有断句
      *
@@ -85,6 +100,21 @@ public class SynthesisController {
         ValidationUtil.notNull(request.getOriginalSentenceId(), "originalSentenceId不能为空");
         String status = synthesisService.synthesizeOriginalSentence(request.getOriginalSentenceId());
         return ResponseUtil.success(status);
+    }
+
+    /**
+     * 取消任务合成
+     * 取消任务下所有PROCESSING状态的断句合成任务
+     *
+     * @param request 取消请求，包含 taskId
+     * @return 取消结果，包含成功和失败的数量统计
+     */
+    @PostMapping("/cancelTask")
+    public ApiResponse<String> cancelTask(
+            @RequestBody com.yunting.dto.synthesis.CancelTaskRequest request) {
+        ValidationUtil.notNull(request.getTaskId(), "taskId不能为空");
+        String result = synthesisService.cancelTask(request.getTaskId());
+        return ResponseUtil.success(result);
     }
 
     /**

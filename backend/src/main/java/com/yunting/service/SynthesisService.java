@@ -62,6 +62,24 @@ public interface SynthesisService {
      * @return 取消结果消息
      */
     String cancelSynthesis(Long breakingSentenceId);
+
+    /**
+     * 取消拆句合成任务
+     * 取消拆句下所有PROCESSING状态的断句合成任务
+     * 
+     * @param originalSentenceId 拆句ID
+     * @return 取消结果消息，包含成功和失败的数量统计
+     */
+    String cancelOriginalSentence(Long originalSentenceId);
+
+    /**
+     * 取消任务合成任务
+     * 取消任务下所有PROCESSING状态的断句合成任务
+     * 
+     * @param taskId 任务ID
+     * @return 取消结果消息，包含成功和失败的数量统计
+     */
+    String cancelTask(Long taskId);
 }
 
 
