@@ -10,8 +10,10 @@ import com.huaweicloud.sdk.metastudio.v1.MetaStudioClient;
 import com.huaweicloud.sdk.metastudio.v1.model.*;
 import com.huaweicloud.sdk.metastudio.v1.region.MetaStudioRegion;
 import com.yunting.config.RocketMQConfig;
+import com.yunting.constant.SynthesisStatus;
 import com.yunting.dto.synthesis.TtsSynthesisRequest;
 import com.yunting.mapper.BreakingSentenceMapper;
+import com.yunting.model.BreakingSentence;
 import com.yunting.service.TtsSynthesisCoordinator;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -27,6 +29,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.nio.ByteBuffer;
@@ -52,6 +57,7 @@ public class TtsSynthesisConsumer {
     private final ObjectMapper objectMapper;
     private final RocketMQConfig rocketMQConfig;
     private final TtsSynthesisCoordinator ttsSynthesisCoordinator;
+    private final TransactionTemplate transactionTemplate;
     private final BlockingQueue<MessageView> messageQueue = new LinkedBlockingQueue<>();
     private final ScheduledExecutorService rateLimiterExecutor = Executors.newScheduledThreadPool(1);
     private volatile boolean running = false;
@@ -78,11 +84,16 @@ public class TtsSynthesisConsumer {
     public TtsSynthesisConsumer(BreakingSentenceMapper breakingSentenceMapper,
                                 ObjectMapper objectMapper,
                                 RocketMQConfig rocketMQConfig,
-                                TtsSynthesisCoordinator ttsSynthesisCoordinator) {
+                                TtsSynthesisCoordinator ttsSynthesisCoordinator,
+                                PlatformTransactionManager transactionManager) {
         this.breakingSentenceMapper = breakingSentenceMapper;
         this.objectMapper = objectMapper;
         this.rocketMQConfig = rocketMQConfig;
         this.ttsSynthesisCoordinator = ttsSynthesisCoordinator;
+        // 创建事务模板，配置为遇到任何异常都回滚
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.transactionTemplate.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
     
     @PostConstruct
@@ -172,9 +183,25 @@ public class TtsSynthesisConsumer {
             byteBuffer.get(body);
             
             TtsSynthesisRequest request = objectMapper.readValue(body, TtsSynthesisRequest.class);
+            Long breakingSentenceId = request.getBreakingSentenceId();
             
             logger.info("处理TTS合成请求，breakingSentenceId: {}, 线程: {}", 
-                    request.getBreakingSentenceId(), Thread.currentThread().getName());
+                    breakingSentenceId, Thread.currentThread().getName());
+            
+            // 在设置合成参数前，先检查断句状态
+            // 如果状态不是PROCESSING，说明任务已被取消、已完成或未开始，应该跳过处理
+            BreakingSentence sentence = breakingSentenceMapper.selectById(breakingSentenceId);
+            if (sentence == null) {
+                logger.warn("断句不存在，跳过处理，breakingSentenceId: {}", breakingSentenceId);
+                return;
+            }
+            
+            Integer currentStatus = sentence.getSynthesisStatus();
+            if (currentStatus == null || !currentStatus.equals(SynthesisStatus.Status.PROCESSING)) {
+                logger.info("断句状态不是PROCESSING，跳过处理，breakingSentenceId: {}, 当前状态: {}", 
+                        breakingSentenceId, currentStatus);
+                return;
+            }
             
             // 确保阅读规则已同步，然后执行合成
             ttsSynthesisCoordinator.ensureVocabularyConfigsAndSynthesize(request, () -> {
@@ -188,6 +215,7 @@ public class TtsSynthesisConsumer {
     
     /**
      * 创建华为云TTS任务（内部方法，由协调器调用）
+     * 使用编程式事务确保数据库更新操作的原子性
      */
     private void createTtsJobInternal(TtsSynthesisRequest request) {
         Long breakingSentenceId = request.getBreakingSentenceId();
@@ -213,7 +241,8 @@ public class TtsSynthesisConsumer {
             String textContent = request.getSsml();
             if (!StringUtils.hasText(textContent)) {
                 logger.warn("SSML为空，无法进行合成，breakingSentenceId: {}", breakingSentenceId);
-                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+                // 在事务中更新状态为失败
+                updateSynthesisStatusInTransaction(breakingSentenceId, SynthesisStatus.Status.FAILED, null);
                 return;
             }
             
@@ -233,29 +262,73 @@ public class TtsSynthesisConsumer {
             if (StringUtils.hasText(jobId)) {
                 logger.info("创建TTS任务成功，jobId: {}, breakingSentenceId: {}", jobId, breakingSentenceId);
                 
-                // 保存job_id到数据库
-                breakingSentenceMapper.updateJobId(breakingSentenceId, jobId);
-                
-                // 更新状态为合成中
-                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 1, null, null);
+                // 在事务中保存job_id和更新状态
+                updateJobIdAndStatusInTransaction(breakingSentenceId, jobId, SynthesisStatus.Status.PROCESSING);
             } else {
                 logger.warn("创建TTS任务失败：未返回jobId，breakingSentenceId: {}", breakingSentenceId);
-                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+                // 在事务中更新状态为失败
+                updateSynthesisStatusInTransaction(breakingSentenceId, SynthesisStatus.Status.FAILED, null);
             }
             
         } catch (ConnectionException e) {
             logger.error("创建TTS任务连接异常，breakingSentenceId: {}", breakingSentenceId, e);
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            updateSynthesisStatusInTransaction(breakingSentenceId, SynthesisStatus.Status.FAILED, null);
         } catch (RequestTimeoutException e) {
             logger.error("创建TTS任务请求超时，breakingSentenceId: {}", breakingSentenceId, e);
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            updateSynthesisStatusInTransaction(breakingSentenceId, SynthesisStatus.Status.FAILED, null);
         } catch (ServiceResponseException e) {
             logger.error("创建TTS任务服务响应异常，breakingSentenceId: {}, HTTP状态码={}, 错误码={}, 错误信息={}", 
                     breakingSentenceId, e.getHttpStatusCode(), e.getErrorCode(), e.getErrorMsg());
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            updateSynthesisStatusInTransaction(breakingSentenceId, SynthesisStatus.Status.FAILED, null);
         } catch (Exception e) {
             logger.error("创建TTS任务异常，breakingSentenceId: {}", breakingSentenceId, e);
-            breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, 3, null, null);
+            updateSynthesisStatusInTransaction(breakingSentenceId, SynthesisStatus.Status.FAILED, null);
+        }
+    }
+    
+    /**
+     * 在事务中更新jobId和状态
+     */
+    private void updateJobIdAndStatusInTransaction(Long breakingSentenceId, String jobId, Integer status) {
+        try {
+            transactionTemplate.execute(transactionStatus -> {
+                // 保存job_id到数据库
+                breakingSentenceMapper.updateJobId(breakingSentenceId, jobId);
+                // 更新状态为合成中
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, status, null, null);
+                logger.debug("在事务中更新jobId和状态成功，breakingSentenceId: {}, jobId: {}, status: {}", 
+                        breakingSentenceId, jobId, status);
+                return null;
+            });
+            logger.info("事务提交成功，已更新jobId和状态，breakingSentenceId: {}, jobId: {}, status: {}", 
+                    breakingSentenceId, jobId, status);
+        } catch (Exception e) {
+            logger.error("在事务中更新jobId和状态失败，breakingSentenceId: {}, jobId: {}, status: {}", 
+                    breakingSentenceId, jobId, status, e);
+            throw e;
+        }
+    }
+    
+    /**
+     * 在事务中更新合成状态
+     */
+    private void updateSynthesisStatusInTransaction(Long breakingSentenceId, Integer status, String jobId) {
+        try {
+            transactionTemplate.execute(transactionStatus -> {
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, status, null, null);
+                if (jobId != null) {
+                    breakingSentenceMapper.updateJobId(breakingSentenceId, jobId);
+                }
+                logger.debug("在事务中更新状态成功，breakingSentenceId: {}, status: {}", 
+                        breakingSentenceId, status);
+                return null;
+            });
+            logger.info("事务提交成功，已更新状态，breakingSentenceId: {}, status: {}", 
+                    breakingSentenceId, status);
+        } catch (Exception e) {
+            logger.error("在事务中更新状态失败，breakingSentenceId: {}, status: {}", 
+                    breakingSentenceId, status, e);
+            // 不抛出异常，避免影响主流程
         }
     }
     

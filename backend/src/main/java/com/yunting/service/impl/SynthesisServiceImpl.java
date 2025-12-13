@@ -188,7 +188,6 @@ public class SynthesisServiceImpl implements SynthesisService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public String synthesizeTask(Long taskId) {
         try {
             // 1. 参数验证：确保任务ID不为空
@@ -208,31 +207,16 @@ public class SynthesisServiceImpl implements SynthesisService {
                 return SynthesisStatus.Message.FAILED + "：任务下没有断句";
             }
             
-            // 4. 对每个断句调用合成逻辑，收集失败信息
-            List<String> failureMessages = new ArrayList<>();
-            for (BreakingSentence sentence : sentences) {
-                try {
-                    String result = synthesize(sentence.getBreakingSentenceId());
-                    if (SynthesisStatus.Message.FAILED.equals(result)) {
-                        // 查询失败原因
-                        BreakingSentence failedSentence = breakingSentenceMapper.selectById(sentence.getBreakingSentenceId());
-                        String errorMsg = "断句ID " + sentence.getBreakingSentenceId();
-                        if (failedSentence == null) {
-                            errorMsg += "：断句不存在";
-                        } else if (!StringUtils.hasText(failedSentence.getSsml())) {
-                            errorMsg += "：SSML为空";
-                        } else {
-                            errorMsg += "：TTS合成请求发送失败";
-                        }
-                        failureMessages.add(errorMsg);
-                    }
-                } catch (Exception e) {
-                    logger.error("合成断句失败，breakingSentenceId: {}", sentence.getBreakingSentenceId(), e);
-                    failureMessages.add("断句ID " + sentence.getBreakingSentenceId() + "：" + e.getMessage());
-                }
+            // 4. 先在一个事务中验证所有断句并更新状态为PROCESSING
+            PrepareSynthesisResult prepareResult = prepareSynthesisForTask(sentences);
+            if (!prepareResult.getFailureMessages().isEmpty()) {
+                return SynthesisStatus.Message.FAILED + "：" + String.join("；", prepareResult.getFailureMessages());
             }
             
-            // 5. 如果有失败，返回失败信息；否则返回"合成中"
+            // 5. 事务已提交，状态已更新为PROCESSING，现在再发送消息（避免consumer读到未提交的状态）
+            List<String> failureMessages = sendSynthesisRequests(prepareResult.getSynthesisRequests());
+            
+            // 6. 如果有失败，返回失败信息；否则返回"合成中"
             if (!failureMessages.isEmpty()) {
                 return SynthesisStatus.Message.FAILED + "：" + String.join("；", failureMessages);
             }
@@ -240,6 +224,122 @@ public class SynthesisServiceImpl implements SynthesisService {
         } catch (Exception e) {
             logger.error("合成任务时发生异常，taskId: {}", taskId, e);
             return SynthesisStatus.Message.FAILED + "：" + e.getMessage();
+        }
+    }
+    
+    /**
+     * 准备合成：验证断句并更新状态为PROCESSING（在事务中执行）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    private PrepareSynthesisResult prepareSynthesisForTask(List<BreakingSentence> sentences) {
+        List<TtsSynthesisRequest> synthesisRequests = new ArrayList<>();
+        List<String> failureMessages = new ArrayList<>();
+        
+        for (BreakingSentence sentence : sentences) {
+            try {
+                Long breakingSentenceId = sentence.getBreakingSentenceId();
+                
+                // 验证断句是否存在
+                BreakingSentence breakingSentence = breakingSentenceMapper.selectById(breakingSentenceId);
+                if (breakingSentence == null) {
+                    failureMessages.add("断句ID " + breakingSentenceId + "：断句不存在");
+                    continue;
+                }
+                
+                // 验证 SSML 是否存在
+                if (!StringUtils.hasText(breakingSentence.getSsml())) {
+                    failureMessages.add("断句ID " + breakingSentenceId + "：SSML为空");
+                    breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
+                    continue;
+                }
+                
+                // 读取合成参数
+                SynthesisSetting setting = synthesisSettingMapper.selectByBreakingSentenceId(breakingSentenceId);
+                if (setting == null) {
+                    failureMessages.add("断句ID " + breakingSentenceId + "：合成参数配置不存在");
+                    breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
+                    continue;
+                }
+                
+                String voiceId = setting.getVoiceId();
+                if (!StringUtils.hasText(voiceId)) {
+                    failureMessages.add("断句ID " + breakingSentenceId + "：音色ID为空");
+                    breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
+                    continue;
+                }
+                
+                // 构建TTS合成请求消息（暂不发送）
+                TtsSynthesisRequest synthesisRequest = new TtsSynthesisRequest();
+                synthesisRequest.setBreakingSentenceId(breakingSentenceId);
+                synthesisRequest.setVoiceId(voiceId);
+                synthesisRequest.setSpeechRate(setting.getSpeechRate());
+                synthesisRequest.setVolume(setting.getVolume());
+                synthesisRequest.setPitch(setting.getPitch());
+                synthesisRequest.setResetStatus(false);
+                synthesisRequest.setSsml(breakingSentence.getSsml());
+                synthesisRequests.add(synthesisRequest);
+                
+                // 更新状态为PROCESSING（事务提交后，consumer才能读到正确的状态）
+                breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.PROCESSING, null, null);
+            } catch (Exception e) {
+                logger.error("验证断句失败，breakingSentenceId: {}", sentence.getBreakingSentenceId(), e);
+                failureMessages.add("断句ID " + sentence.getBreakingSentenceId() + "：" + e.getMessage());
+            }
+        }
+        
+        return new PrepareSynthesisResult(synthesisRequests, failureMessages);
+    }
+    
+    /**
+     * 发送合成请求消息（在事务外执行）
+     */
+    private List<String> sendSynthesisRequests(List<TtsSynthesisRequest> requests) {
+        List<String> failureMessages = new ArrayList<>();
+        
+        for (TtsSynthesisRequest request : requests) {
+            try {
+                boolean success = rocketMQTtsSynthesisService.sendSynthesisRequest(request);
+                if (!success) {
+                    failureMessages.add("断句ID " + request.getBreakingSentenceId() + "：TTS合成请求发送失败");
+                    // 发送失败，更新状态为失败（在单独的事务中）
+                    updateSynthesisStatusToFailed(request.getBreakingSentenceId());
+                }
+            } catch (Exception e) {
+                logger.error("发送TTS合成请求失败，breakingSentenceId: {}", request.getBreakingSentenceId(), e);
+                failureMessages.add("断句ID " + request.getBreakingSentenceId() + "：" + e.getMessage());
+                updateSynthesisStatusToFailed(request.getBreakingSentenceId());
+            }
+        }
+        
+        return failureMessages;
+    }
+    
+    /**
+     * 更新断句状态为失败（在单独的事务中）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    private void updateSynthesisStatusToFailed(Long breakingSentenceId) {
+        breakingSentenceMapper.updateSynthesisInfo(breakingSentenceId, SynthesisStatus.Status.FAILED, null, null);
+    }
+    
+    /**
+     * 准备合成结果内部类
+     */
+    private static class PrepareSynthesisResult {
+        private final List<TtsSynthesisRequest> synthesisRequests;
+        private final List<String> failureMessages;
+        
+        public PrepareSynthesisResult(List<TtsSynthesisRequest> synthesisRequests, List<String> failureMessages) {
+            this.synthesisRequests = synthesisRequests;
+            this.failureMessages = failureMessages;
+        }
+        
+        public List<TtsSynthesisRequest> getSynthesisRequests() {
+            return synthesisRequests;
+        }
+        
+        public List<String> getFailureMessages() {
+            return failureMessages;
         }
     }
 
