@@ -416,30 +416,23 @@ public final class SsmlRenderer {
         int[] currentPos = {0};  // 使用数组包装，使其可以在 lambda 中修改
         List<ProsodyRange> activeProsodyRanges = new ArrayList<>();  // 当前激活的 prosody 范围栈
         
-        // 辅助方法：更新 prosody 标签状态
+        // 辅助方法：更新 prosody 标签状态（只处理关闭标签，打开标签在循环中处理）
+        // 注意：currentPos[0] 是从 0 开始的字符索引，而 range.getEnd() 是从 1 开始的位置
         Runnable updateProsodyTags = () -> {
             // 关闭已经结束的 prosody 标签
+            // 注意：应该在输出字符之后调用，此时 currentPos[0] 已经指向下一个位置
+            // 如果 currentPos[0] + 1 > range.getEnd()，说明已经处理完 end 位置的字符，可以关闭标签
             List<ProsodyRange> toRemove = new ArrayList<>();
             for (ProsodyRange range : activeProsodyRanges) {
-                if (currentPos[0] >= range.getEnd()) {
+                // currentPos[0] 是从 0 开始的索引，range.getEnd() 是从 1 开始的位置
+                // currentPos[0] + 1 表示当前已处理完的位置（从1开始）
+                // 如果 > range.getEnd()，说明已经处理完 end 位置的字符，可以关闭标签
+                if (currentPos[0] + 1 > range.getEnd()) {
                     ssml.append("</prosody>");
                     toRemove.add(range);
                 }
             }
             activeProsodyRanges.removeAll(toRemove);
-            
-            // 打开新的 prosody 标签
-            for (ProsodyRange range : prosodyRanges) {
-                if (currentPos[0] >= range.getBegin() && currentPos[0] < range.getEnd()) {
-                    // 检查是否已经打开
-                    boolean alreadyOpen = activeProsodyRanges.stream()
-                            .anyMatch(r -> r.getBegin() == range.getBegin() && r.getEnd() == range.getEnd());
-                    if (!alreadyOpen) {
-                        ssml.append("<prosody rate=\"").append(range.getRate()).append("\">");
-                        activeProsodyRanges.add(range);
-                    }
-                }
-            }
         };
         
         for (Mark mark : marks) {
@@ -453,9 +446,31 @@ public final class SsmlRenderer {
                 if (endPos > currentPos[0]) {
                     // 逐字符处理，以便正确管理 prosody 标签
                     for (int i = currentPos[0]; i < endPos; i++) {
-                        updateProsodyTags.run();
+                        // 先更新当前位置，以便正确判断标签状态
+                        currentPos[0] = i;
+                        
+                        // 在输出字符之前，检查是否需要打开 prosody 标签（在 begin 位置）
+                        // 注意：i 是从 0 开始的字符索引，range.getBegin() 是从 1 开始的位置
+                        for (ProsodyRange range : prosodyRanges) {
+                            // i + 1 对应从 1 开始的位置索引
+                            if (i + 1 == range.getBegin()) {
+                                boolean alreadyOpen = activeProsodyRanges.stream()
+                                        .anyMatch(r -> r.getBegin() == range.getBegin() && r.getEnd() == range.getEnd());
+                                if (!alreadyOpen) {
+                                    ssml.append("<prosody rate=\"").append(range.getRate()).append("\">");
+                                    activeProsodyRanges.add(range);
+                                }
+                            }
+                        }
+                        
+                        // 输出字符
                         ssml.append(escape(String.valueOf(content.charAt(i))));
+                        
+                        // 更新位置到下一个字符
                         currentPos[0] = i + 1;
+                        
+                        // 关闭已结束的标签（在输出字符并更新位置之后）
+                        updateProsodyTags.run();
                     }
                 }
             }
@@ -482,9 +497,31 @@ public final class SsmlRenderer {
         // 处理剩余文本
         if (currentPos[0] < content.length()) {
             for (int i = currentPos[0]; i < content.length(); i++) {
-                updateProsodyTags.run();
+                // 先更新当前位置，以便正确判断标签状态
+                currentPos[0] = i;
+                
+                // 在输出字符之前，检查是否需要打开 prosody 标签（在 begin 位置）
+                // 注意：i 是从 0 开始的字符索引，range.getBegin() 是从 1 开始的位置
+                for (ProsodyRange range : prosodyRanges) {
+                    // i + 1 对应从 1 开始的位置索引
+                    if (i + 1 == range.getBegin()) {
+                        boolean alreadyOpen = activeProsodyRanges.stream()
+                                .anyMatch(r -> r.getBegin() == range.getBegin() && r.getEnd() == range.getEnd());
+                        if (!alreadyOpen) {
+                            ssml.append("<prosody rate=\"").append(range.getRate()).append("\">");
+                            activeProsodyRanges.add(range);
+                        }
+                    }
+                }
+                
+                // 输出字符
                 ssml.append(escape(String.valueOf(content.charAt(i))));
+                
+                // 更新位置到下一个字符
                 currentPos[0] = i + 1;
+                
+                // 关闭已结束的标签（在输出字符并更新位置之后）
+                updateProsodyTags.run();
             }
         }
 
