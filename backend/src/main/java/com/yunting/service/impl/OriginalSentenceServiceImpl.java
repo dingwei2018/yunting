@@ -9,7 +9,6 @@ import com.yunting.util.SynthesisStatusUtil;
 import com.yunting.util.ValidationUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.CollectionUtils;
 
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -219,9 +218,7 @@ public class OriginalSentenceServiceImpl implements OriginalSentenceService {
                 .map(poly -> {
                     PhonemeConfigDTO phoneme = new PhonemeConfigDTO();
                     phoneme.setPh(poly.getPronunciation() != null ? poly.getPronunciation() : "");
-                    phoneme.setAlphabet(""); // 数据库中没有存储，设为空字符串
-                    phoneme.setBegin(poly.getPosition() != null ? poly.getPosition() : 0);
-                    phoneme.setEnd(poly.getPosition() != null ? poly.getPosition() + 1 : 0);
+                    phoneme.setLocation(poly.getPosition() != null ? poly.getPosition() : 0);
                     return phoneme;
                 })
                 .collect(Collectors.toList());

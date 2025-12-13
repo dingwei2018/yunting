@@ -9,17 +9,9 @@ public class PhonemeConfigDTO {
      */
     private String ph;
     /**
-     * 字母表
+     * 位置
      */
-    private String alphabet;
-    /**
-     * 开始位置
-     */
-    private Integer begin;
-    /**
-     * 结束位置
-     */
-    private Integer end;
+    private Integer location;
 
     public String getPh() {
         return ph;
@@ -29,28 +21,12 @@ public class PhonemeConfigDTO {
         this.ph = ph;
     }
 
-    public String getAlphabet() {
-        return alphabet;
+    public Integer getLocation() {
+        return location;
     }
 
-    public void setAlphabet(String alphabet) {
-        this.alphabet = alphabet;
-    }
-
-    public Integer getBegin() {
-        return begin;
-    }
-
-    public void setBegin(Integer begin) {
-        this.begin = begin;
-    }
-
-    public Integer getEnd() {
-        return end;
-    }
-
-    public void setEnd(Integer end) {
-        this.end = end;
+    public void setLocation(Integer location) {
+        this.location = location;
     }
 }
 
