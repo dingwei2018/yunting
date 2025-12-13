@@ -19,7 +19,7 @@ public final class SynthesisStatusUtil {
      * 聚合规则（优先级从高到低）：
      * 1. 如果任一断句状态为 3（失败） → 返回 3（失败）
      * 2. 如果所有断句状态都是 2（已完成） → 返回 2（已完成）
-     * 3. 如果任一断句状态为 1（合成中）或 2（已合成） → 返回 1（进行中）
+     * 3. 如果任一断句状态为 1（合成中） → 返回 1（进行中）
      * 4. 默认 → 返回 0（未合成）
      *
      * @param breakingSentences 断句列表
@@ -46,11 +46,10 @@ public final class SynthesisStatusUtil {
             return SynthesisStatus.Status.COMPLETED; // 已完成
         }
 
-        // 如果任一断句状态为 1（合成中）或 2（已合成） → 返回 1（进行中）
+        // 如果任一断句状态为 1（合成中） → 返回 1（进行中）
         boolean hasInProgress = breakingSentences.stream()
                 .anyMatch(bs -> bs.getSynthesisStatus() != null && 
-                        (bs.getSynthesisStatus() == SynthesisStatus.Status.PROCESSING || 
-                         bs.getSynthesisStatus() == SynthesisStatus.Status.COMPLETED));
+                        bs.getSynthesisStatus() == SynthesisStatus.Status.PROCESSING);
         if (hasInProgress) {
             return SynthesisStatus.Status.PROCESSING; // 进行中
         }
